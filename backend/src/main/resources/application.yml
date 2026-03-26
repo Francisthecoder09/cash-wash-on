@@ -2,12 +2,18 @@ spring:
   application:
     name: car-wash-operations
   datasource:
-    url: jdbc:h2:mem:carwashdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:carwashdb;DB_CLOSE_DELAY=-1;MODE=MySQL}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      initialization-fail-timeout: -1  # Don't fail on startup if metadata check times out
+      max-lifetime: 120000              # 2 min — shorter than TiDB's idle timeout
+      keepalive-time: 60000            # ping every 60s to keep connections alive
+      connection-timeout: 30000        # 30s to acquire a connection from pool
+      connection-test-query: SELECT 1
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    # database-platform auto-detected from MySQL driver — no need to specify
     hibernate:
       ddl-auto: none
     show-sql: true
@@ -18,16 +24,15 @@ spring:
           time_zone: UTC
   sql:
     init:
-      mode: always
+      mode: never
       schema-locations: classpath:sql/schema.sql
       data-locations: classpath:sql/seed.sql
   h2:
     console:
-      enabled: true
-      path: /h2-console
+      enabled: false
 
 server:
-  port: 8080
+  port: 8083
 
 app:
   jwt:
@@ -48,4 +53,6 @@ management:
 logging:
   level:
     root: INFO
-    com.carwash.ops: INFO
+    org.springframework: INFO
+    org.hibernate: INFO
+    com.carwash.ops: DEBUG

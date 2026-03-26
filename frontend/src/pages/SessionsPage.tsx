@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Grid2, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Grid2, IconButton, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,10 +7,12 @@ import { api } from '../api/client';
 import { SessionStatusChip } from '../components/layout/SessionStatusChip';
 import { authStore } from '../store/auth';
 import { useHasRole } from '../components/auth/RoleGuard';
-import { RealtimeSessionEvent, SelectOption, VehicleSession } from '../types';
+import { RealtimeSessionEvent, SelectOption, VehicleSession, ServiceType, Pricing } from '../types';
 import { formatDateTime } from '../utils/format';
 import { WS_URL } from '../utils/constants';
-import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff } from '@mui/icons-material';
+import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff, Payments, ContentCopy } from '@mui/icons-material';
+import { Tooltip } from '@mui/material';
+import { servicesApi, sessionApi } from '../api/admin';
 
 export function SessionsPage() {
   const auth = authStore.get();
@@ -19,6 +21,11 @@ export function SessionsPage() {
   const [message, setMessage] = useState('Live session board connected');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLoading, setIsLoading] = useState(false);
+  const [services, setServices] = useState<ServiceType[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | ''>('');
+  const [selectedVehicleType, setSelectedVehicleType] = useState('SUV');
+  const [estimatedPrice, setEstimatedPrice] = useState<number>(0);
+  const [pricingMatrix, setPricingMatrix] = useState<Pricing[]>([]);
 
   // Role-based visibility flags
   const canCreateSession = useHasRole('ADMIN', 'BRANCH_MANAGER', 'CASHIER');
@@ -30,6 +37,7 @@ export function SessionsPage() {
   useEffect(() => {
     load();
     api.get<SelectOption[]>(`/reference/branches/${auth?.branchId}/lanes`).then(setLanes);
+    servicesApi.getAll(true).then(setServices);
 
     // Online/offline detection
     const handleOnline = () => setIsOnline(true);
@@ -69,6 +77,29 @@ export function SessionsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedServiceId) {
+      servicesApi.getPricing(selectedServiceId as number).then(setPricingMatrix);
+      const service = services.find(s => s.id === selectedServiceId);
+      if (service) setEstimatedPrice(service.basePrice);
+    } else {
+      setPricingMatrix([]);
+      setEstimatedPrice(0);
+    }
+  }, [selectedServiceId, services]);
+
+  useEffect(() => {
+    if (selectedServiceId) {
+      const specificPrice = pricingMatrix.find(p => p.vehicleCategory === selectedVehicleType && p.active);
+      if (specificPrice) {
+        setEstimatedPrice(specificPrice.price);
+      } else {
+        const service = services.find(s => s.id === selectedServiceId);
+        if (service) setEstimatedPrice(service.basePrice);
+      }
+    }
+  }, [selectedVehicleType, pricingMatrix, selectedServiceId, services]);
+
   const createSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
@@ -80,8 +111,9 @@ export function SessionsPage() {
         registrationNumber: formData.get('registrationNumber'),
         customerName: formData.get('customerName'),
         customerPhone: formData.get('customerPhone'),
-        vehicleType: formData.get('vehicleType'),
-        servicePackage: formData.get('servicePackage'),
+        vehicleType: selectedVehicleType,
+        servicePackage: services.find(s => s.id === selectedServiceId)?.serviceName || '',
+        estimatedPrice: estimatedPrice,
         sourceRequestId: crypto.randomUUID()
       }, true);
       setMessage(navigator.onLine ? 'Session created successfully' : 'Offline: registration queued for sync');
@@ -103,11 +135,14 @@ export function SessionsPage() {
       await api.post(`/sessions/${session.id}/inspect`, { inspectorStaffId: auth?.staffId, bodyCheckPassed: true, interiorCheckPassed: true, notes: 'Approved from desktop board' }, true);
     } else if (session.status === 'INSPECTION' && canInspect) {
       await api.post(`/sessions/${session.id}/complete`, {}, true);
+    } else if (session.status === 'COMPLETED' && !session.paid && canCreateSession) {
+      await sessionApi.pay(session.id);
     }
     load();
   };
 
   const canActOnSession = (session: VehicleSession): boolean => {
+    if (session.status === 'COMPLETED' && !session.paid && canCreateSession) return true;
     if (session.status === 'COMPLETED') return false;
     if ((session.status === 'REGISTERED' || session.status === 'WASHING') && canOperateLane) return true;
     if ((session.status === 'INTERIOR' || session.status === 'INSPECTION') && canInspect) return true;
@@ -119,12 +154,13 @@ export function SessionsPage() {
     if (session.status === 'WASHING') return 'RECORD MATS';
     if (session.status === 'INTERIOR') return 'INSPECT';
     if (session.status === 'INSPECTION') return 'COMPLETE';
-    return 'Completed';
+    if (session.status === 'COMPLETED' && !session.paid) return 'PROCESS PAYMENT';
+    return 'DONE';
   };
 
   const getStatusColor = (status: string): string => {
     switch (status) {
-      case 'REGISTERED': return '#14b86a';
+      case 'REGISTERED': return '#0ea5e9';
       case 'WASHING': return '#3b82f6';
       case 'INTERIOR': return '#f5b942';
       case 'INSPECTION': return '#8b5cf6';
@@ -175,11 +211,11 @@ export function SessionsPage() {
             sx={{
               borderRadius: 2,
               background: isOnline
-                ? 'rgba(20, 184, 106, 0.1)'
+                ? 'rgba(14, 165, 233, 0.1)'
                 : 'rgba(245, 185, 66, 0.1)',
-              border: `1px solid ${isOnline ? 'rgba(20, 184, 106, 0.3)' : 'rgba(245, 185, 66, 0.3)'}`,
+              border: `1px solid ${isOnline ? 'rgba(14, 165, 233, 0.3)' : 'rgba(245, 185, 66, 0.3)'}`,
               '& .MuiAlert-icon': {
-                color: isOnline ? '#14b86a' : '#f5b942'
+                color: isOnline ? '#0ea5e9' : '#f5b942'
               }
             }}
           >
@@ -211,7 +247,7 @@ export function SessionsPage() {
                         width: 40,
                         height: 40,
                         borderRadius: 2,
-                        background: 'linear-gradient(135deg, #14b86a 0%, #10b360 100%)',
+                        background: 'linear-gradient(135deg, #0ea5e9 0%, #10b360 100%)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center'
@@ -229,27 +265,62 @@ export function SessionsPage() {
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#14b86a' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#14b86a' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0ea5e9' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#0ea5e9' }
                         }
                       }}
                     />
                     <TextField label="Customer Name" name="customerName" required sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                     <TextField label="Customer Phone" name="customerPhone" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                     <TextField
+                      select
                       label="Vehicle Type"
                       name="vehicleType"
-                      defaultValue="SUV"
+                      value={selectedVehicleType}
+                      onChange={(e) => setSelectedVehicleType(e.target.value)}
                       required
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
+                    >
+                      <MenuItem value="SEDAN">SEDAN / HATCHBACK</MenuItem>
+                      <MenuItem value="SUV">SUV / CROSSOVER</MenuItem>
+                      <MenuItem value="TRUCK">TRUCK</MenuItem>
+                      <MenuItem value="VAN">VAN / MINIVAN</MenuItem>
+                    </TextField>
                     <TextField
+                      select
                       label="Service Package"
                       name="servicePackage"
-                      defaultValue="Premium Wash"
+                      value={selectedServiceId}
+                      onChange={(e) => setSelectedServiceId(Number(e.target.value))}
                       required
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
+                    >
+                      {services.map((s) => (
+                        <MenuItem key={s.id} value={s.id}>
+                          {s.serviceName} (GH₵{s.basePrice.toFixed(2)})
+                        </MenuItem>
+                      ))}
+                    </TextField>
+
+                    {estimatedPrice > 0 && (
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: 'rgba(14, 165, 233, 0.1)',
+                          border: '1px dashed rgba(14, 165, 233, 0.3)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Payments sx={{ color: '#0ea5e9', fontSize: 20 }} />
+                          <Typography variant="body2" sx={{ color: '#0ea5e9', fontWeight: 600 }}>Calculated Price:</Typography>
+                        </Box>
+                        <Typography variant="h6" sx={{ color: '#0ea5e9', fontWeight: 800 }}>${estimatedPrice.toFixed(2)}</Typography>
+                      </Box>
+                    )}
                     <TextField
                       select
                       label="Lane"
@@ -269,11 +340,11 @@ export function SessionsPage() {
                         py: 1.5,
                         fontWeight: 700,
                         borderRadius: 2,
-                        background: 'linear-gradient(135deg, #14b86a 0%, #10b360 100%)',
-                        boxShadow: '0 4px 16px rgba(20, 184, 106, 0.4)',
+                        background: 'linear-gradient(135deg, #0ea5e9 0%, #10b360 100%)',
+                        boxShadow: '0 4px 16px rgba(14, 165, 233, 0.4)',
                         '&:hover': {
                           transform: 'translateY(-2px)',
-                          boxShadow: '0 8px 24px rgba(20, 184, 106, 0.5)'
+                          boxShadow: '0 8px 24px rgba(14, 165, 233, 0.5)'
                         }
                       }}
                     >
@@ -344,6 +415,26 @@ export function SessionsPage() {
                               <Typography color="text.secondary" sx={{ fontSize: '0.9rem' }}>
                                 {session.customerName} • {session.servicePackage}
                               </Typography>
+                              {session.price !== undefined && (
+                                <Typography sx={{ color: '#0ea5e9', fontWeight: 700, fontSize: '1.1rem', mt: 1 }}>
+                                  ${session.price.toFixed(2)} {session.paid && <Chip label="PAID" size="small" sx={{ ml: 1, bgcolor: 'rgba(14, 165, 233, 0.2)', color: '#0ea5e9', fontWeight: 800, height: 20 }} />}
+                                  {session.portalToken && (
+                                    <Tooltip title="Copy Customer Portal Link">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => {
+                                          const url = `${window.location.origin}/portal/${session.portalToken}`;
+                                          navigator.clipboard.writeText(url);
+                                          setMessage('Portal link copied to clipboard!');
+                                        }}
+                                        sx={{ ml: 1, color: 'rgba(255,255,255,0.4)', '&:hover': { color: '#38bdf8' } }}
+                                      >
+                                        <ContentCopy sx={{ fontSize: 16 }} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                </Typography>
+                              )}
                             </Box>
                             <SessionStatusChip status={session.status} />
                           </Stack>

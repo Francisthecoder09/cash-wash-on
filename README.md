@@ -81,8 +81,9 @@ car-wash-on/
 
 ```json
 {
-  "username": "admin",
-  "password": "Password123!"
+  "email": "admin@rinseflow.local",
+  "pin": "123456",
+  "role": "ADMIN"
 }
 ```
 
@@ -140,22 +141,23 @@ car-wash-on/
 - `lane.accra`
 - `inspector.accra`
 
-Password for all seed users:
+The implemented login flow uses `email`, `pin`, and an optional `role`.
 
-```text
-password
+Seed credentials should be verified from the active SQL seed data before use.
+
+For local development, the safest default is the in-memory local profile:
+
+```bash
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
-
-(Note: Use lowercase "password" for all demo accounts)
-
-The seed SQL inserts the users, and the backend bootstraps any non-BCrypt seed passwords into BCrypt on first startup.
 
 Default local backend datasource:
 
 ```text
-jdbc:postgresql://localhost:5432/car_wash_ops
-username: postgres
-password: postgres
+jdbc:h2:mem:carwashdb;DB_CLOSE_DELAY=-1;MODE=MySQL
+username: sa
+password:
 ```
 
 ## Setup Instructions
