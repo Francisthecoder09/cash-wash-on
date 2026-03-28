@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record LoginRequest(
-                @NotBlank String username,
-                @NotBlank String password,
+                @NotBlank String email,
+                @NotBlank String pin,
                 RoleName role) {
 }

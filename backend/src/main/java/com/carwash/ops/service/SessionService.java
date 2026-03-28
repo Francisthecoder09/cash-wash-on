@@ -19,4 +19,12 @@ public interface SessionService {
     VehicleSessionResponse inspect(Long sessionId, InspectionRequest request, String username);
     VehicleSessionResponse complete(Long sessionId, String username);
     VehicleHistoryResponse searchByRegistration(String registrationNumber);
+    VehicleSessionResponse processPayment(Long sessionId, String username);
+    VehicleSessionResponse findByPortalToken(String token);
+
+    VehicleSessionResponse findActiveByRegistrationAndPhone(String reg, String phone);
+    VehicleSessionResponse findActiveByRegistrationAndEmail(String reg, String email);
+
+    VehicleSessionResponse book(CreateVehicleSessionRequest request);
 }
+

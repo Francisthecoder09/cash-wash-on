@@ -18,12 +18,12 @@ INSERT INTO staff (id, branch_id, full_name, employee_code, phone, active, creat
 (6, 2, 'Yaw Thompson', 'STF-006', '+233200000006', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at;
 
-INSERT INTO users (id, branch_id, staff_id, username, password_hash, role, active, created_at, updated_at) VALUES
-(1, 1, 1, 'admin', 'Password123!', 'ADMIN', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(2, 1, 2, 'manager.accra', 'Password123!', 'BRANCH_MANAGER', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(3, 1, 3, 'cashier.accra', 'Password123!', 'CASHIER', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(4, 1, 4, 'lane.accra', 'Password123!', 'LANE_OPERATOR', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(5, 1, 5, 'inspector.accra', 'Password123!', 'INSPECTOR', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+INSERT INTO users (id, branch_id, staff_id, username, email, password_hash, pin_hash, role, active, created_at, updated_at) VALUES
+(1, 1, 1, 'admin', 'admin@carwash.com', 'Password123!', 'Password123!', 'ADMIN', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 1, 2, 'manager.accra', 'manager@carwash.com', 'Password123!', 'Password123!', 'BRANCH_MANAGER', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 1, 3, 'cashier.accra', 'cashier@carwash.com', 'Password123!', 'Password123!', 'CASHIER', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 1, 4, 'lane.accra', 'lane@carwash.com', 'Password123!', 'Password123!', 'LANE_OPERATOR', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 1, 5, 'inspector.accra', 'inspector@carwash.com', 'Password123!', 'Password123!', 'INSPECTOR', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at;
 
 INSERT INTO vehicle_sessions (

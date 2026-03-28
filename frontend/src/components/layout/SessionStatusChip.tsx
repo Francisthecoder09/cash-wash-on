@@ -9,7 +9,14 @@ export function SessionStatusChip({ status }: { status: SessionStatus }) {
       sx={{
         backgroundColor: `${statusColors[status]}22`,
         color: statusColors[status],
-        fontWeight: 700
+        fontWeight: 700,
+        border: `1px solid ${statusColors[status]}33`,
+        maxWidth: '100%',
+        '& .MuiChip-label': {
+          whiteSpace: 'normal',
+          overflowWrap: 'anywhere',
+          lineHeight: 1.1,
+        },
       }}
     />
   );

@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**", "/ws/**", "/actuator/health").permitAll()
+                        .requestMatchers("/api/auth/**", "/api/portal/**", "/swagger-ui/**", "/v3/api-docs/**", "/ws/**", "/actuator/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/lanes/**").authenticated()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())

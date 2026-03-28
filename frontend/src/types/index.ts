@@ -5,7 +5,7 @@ export type SessionStatus = 'REGISTERED' | 'WASHING' | 'INTERIOR' | 'INSPECTION'
 export interface AuthResponse {
   token: string;
   userId: number;
-  username: string;
+  email: string;
   role: Role;
   branchId: number;
   staffId: number;
@@ -21,10 +21,14 @@ export interface VehicleSession {
   registrationNumber: string;
   customerName: string;
   customerPhone?: string;
+  customerEmail?: string;
   vehicleType: string;
   servicePackage: string;
   status: SessionStatus;
   delayReason?: string;
+  price?: number;
+  paid?: boolean;
+  portalToken?: string;
   branchId: number;
   branchName: string;
   laneId?: number;
@@ -32,6 +36,7 @@ export interface VehicleSession {
   cashierUserId: number;
   operatorStaffId?: number;
   operatorName?: string;
+  appointmentAt?: string;
   registeredAt: string;
   washingStartedAt?: string;
   interiorStartedAt?: string;
@@ -39,6 +44,23 @@ export interface VehicleSession {
   completedAt?: string;
   createdAt: string;
   updatedAt: string;
+  customerProfile?: {
+    totalVisits: number;
+    loyaltyPoints: number;
+    loyaltyTier: string;
+    lastVehicleRegistration?: string;
+  };
+  recentSessions?: {
+    sessionId: number;
+    registrationNumber: string;
+    servicePackage: string;
+    status: SessionStatus;
+    price?: number;
+    paid?: boolean;
+    appointmentAt?: string;
+    completedAt?: string;
+    createdAt: string;
+  }[];
 }
 
 export interface DashboardSummary {
@@ -71,6 +93,8 @@ export interface VehicleHistory {
     operatorName?: string;
     servicePackage: string;
     status: SessionStatus;
+    price?: number;
+    paid?: boolean;
     registeredAt: string;
     completedAt?: string;
     matsTracking?: {
@@ -133,7 +157,7 @@ export interface Staff {
 
 export interface User {
   id: number;
-  username: string;
+  email: string;
   role: Role;
   branchId: number;
   branchName?: string;
@@ -155,11 +179,11 @@ export interface CreateLaneRequest {
 }
 
 export interface CreateUserRequest {
-  username: string;
-  password: string;
+  email: string;
+  pin: string;
   role: Role;
   branchId: number;
-  staffId?: number;
+  staffId: number;
 }
 
 export interface CreateStaffRequest {
@@ -196,4 +220,37 @@ export interface BranchStats {
 export interface DailyVehicleCount {
   date: string;
   count: number;
+}
+
+export interface ServiceType {
+  id: number;
+  serviceName: string;
+  description?: string;
+  basePrice: number;
+  durationMinutes: number;
+  category: string;
+  isFeatured: boolean;
+  active: boolean;
+}
+
+export interface Pricing {
+  id: number;
+  serviceTypeId: number;
+  serviceName: string;
+  vehicleCategory: string;
+  price: number;
+  discountPercentage?: number;
+  active: boolean;
+}
+
+export interface Customer {
+  id: number;
+  fullName: string;
+  phone: string;
+  email?: string;
+  totalVisits: number;
+  loyaltyPoints: number;
+  lastVehicleRegistration?: string;
+  createdAt: string;
+  updatedAt: string;
 }

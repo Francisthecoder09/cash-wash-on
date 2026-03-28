@@ -113,11 +113,18 @@ car-wash-on/
   "registrationNumber": "GR-2026-88",
   "customerName": "Akosua Annan",
   "customerPhone": "+233540123456",
+  "customerEmail": "akosua@rinseflow.com",
   "vehicleType": "SUV",
   "servicePackage": "Premium Wash",
   "sourceRequestId": "0f10a7d6-d7f0-4fd8-bf23-83cd6a38a841"
 }
 ```
+
+### Customer Portal
+
+- Portal booking now captures `customerEmail`
+- Customer re-entry uses `registration number + email`
+- OTP email delivery works in production when SMTP env vars are configured
 
 ### Dashboard
 
@@ -135,24 +142,16 @@ car-wash-on/
 
 ## Default Seed Users
 
-- `admin`
-- `manager.accra`
-- `cashier.accra`
-- `lane.accra`
-- `inspector.accra`
+- `admin@rinseflow.com` / `123456` / `ADMIN`
+- `manager@rinseflow.com` / `123456` / `BRANCH_MANAGER`
+- `cashier@rinseflow.com` / `123456` / `CASHIER`
+- `lane@rinseflow.com` / `123456` / `LANE_OPERATOR`
+- `inspector@rinseflow.com` / `123456` / `INSPECTOR`
+- `auditor@rinseflow.com` / `123456` / `AUDITOR`
 
-The implemented login flow uses `email`, `pin`, and an optional `role`.
+The implemented login flow uses `email`, `pin`, and a matching `role`.
 
-Seed credentials should be verified from the active SQL seed data before use.
-
-For local development, the safest default is the in-memory local profile:
-
-```bash
-cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-```
-
-Default local backend datasource:
+For local development, the default backend datasource is:
 
 ```text
 jdbc:h2:mem:carwashdb;DB_CLOSE_DELAY=-1;MODE=MySQL
@@ -162,37 +161,16 @@ password:
 
 ## Setup Instructions
 
-### Option 1: Docker Compose
+### Local Development
 
-1. From the repository root, run:
-
-```bash
-docker compose up --build
-```
-
-2. Open:
-   - Frontend: `http://localhost:3000`
-   - Backend API: `http://localhost:8080`
-   - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-
-### Option 2: Local Development
-
-1. Start PostgreSQL and create/import the database:
-
-```bash
-createdb car_wash_ops
-psql -d car_wash_ops -f database/schema.sql
-psql -d car_wash_ops -f database/seed.sql
-```
-
-2. Run the backend:
+1. Run the backend:
 
 ```bash
 cd backend
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-3. Run the frontend:
+2. Run the frontend:
 
 ```bash
 cd frontend
@@ -200,7 +178,55 @@ npm install
 npm run dev
 ```
 
-4. Open the app at `http://localhost:5173`.
+3. Open:
+   - Frontend: `http://localhost:5173`
+   - Backend API: `http://localhost:8083`
+   - Health: `http://localhost:8083/actuator/health`
+
+### Production / Hosted Deployment
+
+1. Copy the example env files:
+
+```bash
+backend/.env.example
+frontend/.env.example
+```
+
+2. Set backend env vars for:
+   - PostgreSQL or another production database
+   - JWT secret
+   - frontend CORS origin
+   - SMTP delivery for customer OTP emails
+
+3. Set frontend env vars:
+
+```bash
+VITE_API_URL=https://your-backend-domain.com
+```
+
+4. Important backend production env vars:
+
+```text
+SPRING_DATASOURCE_URL=jdbc:postgresql://your-db-host:5432/car_wash_ops
+SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+SPRING_DATASOURCE_USERNAME=your_db_user
+SPRING_DATASOURCE_PASSWORD=your_db_password
+SPRING_SQL_INIT_MODE=never
+APP_JWT_SECRET=replace_with_a_long_random_secret
+APP_CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
+APP_MAIL_MOCK_ENABLED=false
+APP_MAIL_FROM=noreply@yourdomain.com
+SPRING_MAIL_HOST=smtp.sendgrid.net
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=apikey
+SPRING_MAIL_PASSWORD=your_sendgrid_api_key
+```
+
+5. If you use SendGrid, complete domain authentication before enabling `APP_MAIL_MOCK_ENABLED=false`.
+
+### Docker Compose
+
+The existing compose setup can still be used for containerized local runs, but verify its exposed ports and env vars before using it in production.
 
 ## Notes
 

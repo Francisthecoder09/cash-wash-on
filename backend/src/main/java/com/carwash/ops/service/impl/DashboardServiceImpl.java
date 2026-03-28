@@ -13,6 +13,9 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.math.BigDecimal;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,11 +35,18 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public DashboardSummaryResponse getSummary(Long branchId) {
+                if (branchId == null) {
+                        return new DashboardSummaryResponse(0L, 0L, 0L, List.of(), List.of());
+                }
+
+                // Pre-load sessions once to avoid repeated queries
+                var completedSessions = vehicleSessionRepository.findFiltered(branchId, SessionStatus.COMPLETED);
+                var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
+
                 List<LaneLeaderboardItem> leaderboard = laneRepository.findByBranch_IdOrderByDisplayOrderAsc(branchId)
                                 .stream()
                                 .map(lane -> {
-                                        var sessions = vehicleSessionRepository
-                                                        .findFiltered(branchId, SessionStatus.COMPLETED).stream()
+                                        var sessions = completedSessions.stream()
                                                         .filter(session -> session.getLane() != null && session
                                                                         .getLane().getId().equals(lane.getId()))
                                                         .filter(session -> session.getCompletedAt() != null
@@ -49,8 +59,10 @@ public class DashboardServiceImpl implements DashboardService {
                                                                                         session.getCompletedAt())
                                                                                         .toMinutes())
                                                                         .average().orElse(0.0);
+                                        // Use getBranchName() to avoid navigating the lazy-loaded Branch proxy
+                                        String branchName = lane.getBranchName();
                                         return new LaneLeaderboardItem(lane.getId(), lane.getLaneName(),
-                                                        lane.getBranch().getName(), sessions.size(), avg);
+                                                        branchName != null ? branchName : "", sessions.size(), avg);
                                 })
                                 .sorted(Comparator.comparingDouble(LaneLeaderboardItem::averageMinutes))
                                 .toList();
@@ -80,10 +92,12 @@ public class DashboardServiceImpl implements DashboardService {
                                 branchId,
                                 today.atStartOfDay().toInstant(ZoneOffset.UTC),
                                 today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));
-                long delayedSessions = vehicleSessionRepository.findFiltered(branchId, null).stream()
+
+                long delayedSessions = allSessions.stream()
                                 .filter(session -> session.getStatus() != SessionStatus.COMPLETED)
-                                .filter(session -> Duration.between(session.getRegisteredAt(), Instant.now())
-                                                .toMinutes() > 45)
+                                .filter(session -> session.getRegisteredAt() != null
+                                                && Duration.between(session.getRegisteredAt(), Instant.now())
+                                                                .toMinutes() > 45)
                                 .count();
 
                 return new DashboardSummaryResponse(
@@ -93,5 +107,63 @@ public class DashboardServiceImpl implements DashboardService {
                                 delayedSessions,
                                 leaderboard,
                                 ranking);
+        }
+
+        @Override
+        public BigDecimal getTodayRevenue(Long branchId) {
+                if (branchId == null) return BigDecimal.ZERO;
+                LocalDate today = LocalDate.now(ZoneOffset.UTC);
+                
+                var sessions = vehicleSessionRepository.findFiltered(branchId, SessionStatus.COMPLETED);
+                
+                return sessions.stream()
+                        .filter(s -> s.getCompletedAt() != null)
+                        .filter(s -> LocalDate.ofInstant(s.getCompletedAt(), ZoneOffset.UTC).equals(today))
+                        .filter(s -> Boolean.TRUE.equals(s.getPaid()))
+                        .map(s -> s.getPrice() != null ? BigDecimal.valueOf(s.getPrice()) : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        @Override
+        public long getActiveSessionsCount(Long branchId) {
+                if (branchId == null) return 0;
+                var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
+                return allSessions.stream()
+                        .filter(s -> s.getStatus() != SessionStatus.COMPLETED)
+                        .count();
+        }
+
+        @Override
+        public Map<String, Long> getSessionStatusBreakdown(Long branchId) {
+                if (branchId == null) return Map.of();
+                LocalDate today = LocalDate.now(ZoneOffset.UTC);
+                
+                var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
+                
+                return allSessions.stream()
+                        .filter(s -> s.getRegisteredAt() != null)
+                        .filter(s -> LocalDate.ofInstant(s.getRegisteredAt(), ZoneOffset.UTC).equals(today) || 
+                                     (s.getStatus() != SessionStatus.COMPLETED))
+                        .collect(Collectors.groupingBy(
+                                s -> s.getStatus() != null ? s.getStatus().name() : "UNKNOWN",
+                                Collectors.counting()
+                        ));
+        }
+
+        @Override
+        public Map<String, Long> getPopularServicesBreakdown(Long branchId) {
+                if (branchId == null) return Map.of();
+                LocalDate today = LocalDate.now(ZoneOffset.UTC);
+                
+                var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
+                
+                return allSessions.stream()
+                        .filter(s -> s.getRegisteredAt() != null)
+                        .filter(s -> LocalDate.ofInstant(s.getRegisteredAt(), ZoneOffset.UTC).equals(today))
+                        .filter(s -> s.getServicePackage() != null)
+                        .collect(Collectors.groupingBy(
+                                s -> s.getServicePackage(),
+                                Collectors.counting()
+                        ));
         }
 }

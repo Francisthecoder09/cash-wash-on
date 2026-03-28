@@ -24,8 +24,8 @@ public class AuthenticatedUser implements UserDetails {
         this.id = user.getId();
         this.branchId = user.getBranch().getId();
         this.staffId = user.getStaff().getId();
-        this.username = user.getUsername();
-        this.password = user.getPasswordHash();
+        this.username = user.getEmail();
+        this.password = user.getPinHash();
         this.authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
         this.active = user.isActive();
     }

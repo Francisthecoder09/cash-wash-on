@@ -3,7 +3,7 @@ spring:
     name: car-wash-operations
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:carwashdb;DB_CLOSE_DELAY=-1;MODE=MySQL}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
     username: ${SPRING_DATASOURCE_USERNAME:sa}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     hikari:
@@ -17,6 +17,7 @@ spring:
     hibernate:
       ddl-auto: none
     show-sql: true
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
@@ -24,15 +25,26 @@ spring:
           time_zone: UTC
   sql:
     init:
-      mode: never
+      mode: ${SPRING_SQL_INIT_MODE:always}
       schema-locations: classpath:sql/schema.sql
       data-locations: classpath:sql/seed.sql
   h2:
     console:
       enabled: false
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:true}
 
 server:
-  port: 8083
+  port: ${SERVER_PORT:8083}
 
 app:
   jwt:
@@ -42,7 +54,10 @@ app:
     secret: ${APP_JWT_SECRET:dev-secret-key-for-local-testing-only-32bytes}
     expiration-minutes: ${APP_JWT_EXPIRATION_MINUTES:720}
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:4173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:4173,http://127.0.0.1:3000}
+  mail:
+    mock-enabled: ${APP_MAIL_MOCK_ENABLED:true}
+    from: ${APP_MAIL_FROM:noreply@carwash.com}
 
 management:
   endpoints:
@@ -52,7 +67,7 @@ management:
 
 logging:
   level:
-    root: INFO
-    org.springframework: INFO
-    org.hibernate: INFO
-    com.carwash.ops: DEBUG
+    root: ${LOG_LEVEL_ROOT:INFO}
+    org.springframework: ${LOG_LEVEL_SPRING:INFO}
+    org.hibernate: ${LOG_LEVEL_HIBERNATE:INFO}
+    com.carwash.ops: ${LOG_LEVEL_APP:INFO}

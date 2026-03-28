@@ -17,10 +17,16 @@ import com.carwash.ops.repository.StaffRepository;
 import com.carwash.ops.repository.UserRepository;
 import com.carwash.ops.repository.VehicleSessionRepository;
 import com.carwash.ops.service.AdminService;
+import com.carwash.ops.domain.entity.ServiceTypeEntity;
+import com.carwash.ops.domain.entity.PricingEntity;
+import com.carwash.ops.repository.ServiceTypeEntityRepository;
+import com.carwash.ops.repository.PricingEntityRepository;
+import com.carwash.ops.dto.admin.ServiceAdminDTO;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +40,8 @@ public class AdminServiceImpl implements AdminService {
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
     private final VehicleSessionRepository vehicleSessionRepository;
+    private final ServiceTypeEntityRepository serviceTypeEntityRepository;
+    private final PricingEntityRepository pricingEntityRepository;
     private final PasswordEncoder passwordEncoder;
 
     public AdminServiceImpl(
@@ -42,12 +50,16 @@ public class AdminServiceImpl implements AdminService {
             StaffRepository staffRepository,
             UserRepository userRepository,
             VehicleSessionRepository vehicleSessionRepository,
+            ServiceTypeEntityRepository serviceTypeEntityRepository,
+            PricingEntityRepository pricingEntityRepository,
             PasswordEncoder passwordEncoder) {
         this.branchRepository = branchRepository;
         this.laneRepository = laneRepository;
         this.staffRepository = staffRepository;
         this.userRepository = userRepository;
         this.vehicleSessionRepository = vehicleSessionRepository;
+        this.serviceTypeEntityRepository = serviceTypeEntityRepository;
+        this.pricingEntityRepository = pricingEntityRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -200,7 +212,7 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     public List<Staff> getStaffByBranch(Long branchId) {
-        return staffRepository.findByBranch_Id(branchId);
+        return staffRepository.findByBranch_IdWithBranch(branchId);
     }
 
     // ========== Dashboard Operations ==========
@@ -282,5 +294,127 @@ public class AdminServiceImpl implements AdminService {
                 vehiclesThisMonth,
                 branchStats,
                 dailyTrend);
+    }
+
+    // ========== Service Type Operations ==========
+
+    @Override
+    public List<ServiceAdminDTO.ServiceTypeResponse> getAllServiceTypes() {
+        return serviceTypeEntityRepository.findAll().stream()
+                .map(this::mapToServiceTypeResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public ServiceAdminDTO.ServiceTypeResponse createServiceType(ServiceAdminDTO.CreateServiceRequest request) {
+        if (serviceTypeEntityRepository.existsByServiceName(request.getServiceName())) {
+            throw ApiException.badRequest("Service name already exists: " + request.getServiceName());
+        }
+
+        com.carwash.ops.domain.entity.ServiceTypeEntity serviceType = new com.carwash.ops.domain.entity.ServiceTypeEntity();
+        serviceType.setServiceName(request.getServiceName());
+        serviceType.setDescription(request.getDescription());
+        serviceType.setBasePrice(request.getBasePrice());
+        serviceType.setDurationMinutes(request.getDurationMinutes());
+        serviceType.setCategory(request.getCategory());
+        serviceType.setIsFeatured(request.getIsFeatured() != null ? request.getIsFeatured() : false);
+        serviceType.setActive(true);
+
+        return mapToServiceTypeResponse(serviceTypeEntityRepository.save(serviceType));
+    }
+
+    @Override
+    public ServiceAdminDTO.ServiceTypeResponse updateServiceType(Long id, ServiceAdminDTO.UpdateServiceRequest request) {
+        com.carwash.ops.domain.entity.ServiceTypeEntity serviceType = serviceTypeEntityRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Service type not found: " + id));
+
+        serviceType.setServiceName(request.getServiceName());
+        serviceType.setDescription(request.getDescription());
+        serviceType.setBasePrice(request.getBasePrice());
+        serviceType.setDurationMinutes(request.getDurationMinutes());
+        serviceType.setCategory(request.getCategory());
+
+        return mapToServiceTypeResponse(serviceTypeEntityRepository.save(serviceType));
+    }
+
+    @Override
+    public void deleteServiceType(Long id) {
+        com.carwash.ops.domain.entity.ServiceTypeEntity serviceType = serviceTypeEntityRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Service type not found: " + id));
+        serviceType.setActive(false);
+        serviceTypeEntityRepository.save(serviceType);
+    }
+
+    // ========== com.carwash.ops.domain.entity.PricingEntity Operations ==========
+
+    @Override
+    public List<ServiceAdminDTO.PricingResponse> getPricingByServiceType(Long serviceTypeId) {
+        return pricingEntityRepository.findByServiceTypeId(serviceTypeId).stream()
+                .map(this::mapToPricingResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public ServiceAdminDTO.PricingResponse createPricing(ServiceAdminDTO.CreatePricingRequest request) {
+        com.carwash.ops.domain.entity.ServiceTypeEntity serviceType = serviceTypeEntityRepository.findById(request.getServiceTypeId())
+                .orElseThrow(() -> ApiException.notFound("Service type not found: " + request.getServiceTypeId()));
+
+        com.carwash.ops.domain.entity.PricingEntity pricing = new com.carwash.ops.domain.entity.PricingEntity();
+        pricing.setServiceType(serviceType);
+        pricing.setVehicleCategory(request.getVehicleCategory());
+        pricing.setPrice(request.getPrice());
+        pricing.setDiscountPercentage(request.getDiscountPercentage());
+        pricing.setEffectiveFrom(request.getEffectiveFrom() != null ? request.getEffectiveFrom() : null);
+        pricing.setEffectiveUntil(request.getEffectiveUntil() != null ? request.getEffectiveUntil() : null);
+        pricing.setActive(true);
+
+        return mapToPricingResponse(pricingEntityRepository.save(pricing));
+    }
+
+    @Override
+    public ServiceAdminDTO.PricingResponse updatePricing(Long id, ServiceAdminDTO.UpdatePricingRequest request) {
+        com.carwash.ops.domain.entity.PricingEntity pricing = pricingEntityRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Pricing not found: " + id));
+
+        pricing.setPrice(request.getPrice());
+        pricing.setDiscountPercentage(request.getDiscountPercentage());
+
+        return mapToPricingResponse(pricingEntityRepository.save(pricing));
+    }
+
+    @Override
+    public void deletePricing(Long id) {
+        com.carwash.ops.domain.entity.PricingEntity pricing = pricingEntityRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Pricing not found: " + id));
+        pricing.setActive(false);
+        pricingEntityRepository.save(pricing);
+    }
+
+    private com.carwash.ops.dto.admin.ServiceAdminDTO.ServiceTypeResponse mapToServiceTypeResponse(com.carwash.ops.domain.entity.ServiceTypeEntity serviceTypeEntity) {
+        return com.carwash.ops.dto.admin.ServiceAdminDTO.ServiceTypeResponse.builder()
+                .id(((com.carwash.ops.domain.entity.BaseEntity) serviceTypeEntity).getId())
+                .serviceName(serviceTypeEntity.getServiceName())
+                .description(serviceTypeEntity.getDescription())
+                .basePrice(serviceTypeEntity.getBasePrice())
+                .durationMinutes(serviceTypeEntity.getDurationMinutes())
+                .category(serviceTypeEntity.getCategory())
+                .isFeatured(serviceTypeEntity.getIsFeatured())
+                .active(serviceTypeEntity.isActive())
+                .imageUrl(serviceTypeEntity.getImageUrl())
+                .build();
+    }
+
+    private com.carwash.ops.dto.admin.ServiceAdminDTO.PricingResponse mapToPricingResponse(com.carwash.ops.domain.entity.PricingEntity pricingEntity) {
+        return com.carwash.ops.dto.admin.ServiceAdminDTO.PricingResponse.builder()
+                .id(((com.carwash.ops.domain.entity.BaseEntity) pricingEntity).getId())
+                .serviceTypeId(((com.carwash.ops.domain.entity.BaseEntity) pricingEntity.getServiceType()).getId())
+                .serviceName(pricingEntity.getServiceType().getServiceName())
+                .vehicleCategory(pricingEntity.getVehicleCategory())
+                .price(pricingEntity.getPrice())
+                .discountPercentage(pricingEntity.getDiscountPercentage())
+                .effectiveFrom(pricingEntity.getEffectiveFrom())
+                .effectiveUntil(pricingEntity.getEffectiveUntil())
+                .active(pricingEntity.isActive())
+                .build();
     }
 }

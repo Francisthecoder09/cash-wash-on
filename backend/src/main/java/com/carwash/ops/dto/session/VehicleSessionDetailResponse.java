@@ -9,6 +9,8 @@ public record VehicleSessionDetailResponse(
         String operatorName,
         String servicePackage,
         String status,
+        Double price,
+        Boolean paid,
         Instant registeredAt,
         Instant completedAt,
         MatsTrackingView matsTracking,

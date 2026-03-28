@@ -29,9 +29,14 @@ import com.carwash.ops.repository.StaffRepository;
 import com.carwash.ops.repository.UserRepository;
 import com.carwash.ops.repository.VehicleSessionRepository;
 import com.carwash.ops.service.AuditService;
+import com.carwash.ops.service.CustomerService;
 import com.carwash.ops.service.SessionService;
+import com.carwash.ops.service.NotificationService;
+import com.carwash.ops.domain.entity.Customer;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -52,7 +57,9 @@ public class SessionServiceImpl implements SessionService {
     private final SignatureRepository signatureRepository;
     private final InspectionRepository inspectionRepository;
     private final AuditService auditService;
+    private final CustomerService customerService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final List<NotificationService> notificationServices;
 
     public SessionServiceImpl(
             VehicleSessionRepository vehicleSessionRepository,
@@ -64,7 +71,9 @@ public class SessionServiceImpl implements SessionService {
             SignatureRepository signatureRepository,
             InspectionRepository inspectionRepository,
             AuditService auditService,
-            SimpMessagingTemplate messagingTemplate
+            CustomerService customerService,
+            SimpMessagingTemplate messagingTemplate,
+            List<NotificationService> notificationServices
     ) {
         this.vehicleSessionRepository = vehicleSessionRepository;
         this.branchRepository = branchRepository;
@@ -75,7 +84,9 @@ public class SessionServiceImpl implements SessionService {
         this.signatureRepository = signatureRepository;
         this.inspectionRepository = inspectionRepository;
         this.auditService = auditService;
+        this.customerService = customerService;
         this.messagingTemplate = messagingTemplate;
+        this.notificationServices = notificationServices;
     }
 
     @Override
@@ -87,26 +98,45 @@ public class SessionServiceImpl implements SessionService {
                 return map(existing.get());
             }
         }
+        String normalizedRegistration = request.registrationNumber().trim().toUpperCase();
+        String normalizedPhone = blankToNull(request.customerPhone() == null ? null : request.customerPhone().trim());
         Branch branch = branchRepository.findById(request.branchId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Branch not found"));
+        validateNoDuplicateActiveSession(request.branchId(), normalizedRegistration, normalizedPhone);
         User cashier = getUserByUsername(username);
         VehicleSession session = new VehicleSession();
         session.setBranch(branch);
         session.setCashierUser(cashier);
-        session.setRegistrationNumber(request.registrationNumber().trim().toUpperCase());
+        session.setRegistrationNumber(normalizedRegistration);
         session.setCustomerName(request.customerName());
-        session.setCustomerPhone(request.customerPhone());
+        session.setCustomerPhone(normalizedPhone);
         session.setVehicleType(request.vehicleType());
         session.setServicePackage(request.servicePackage());
         session.setStatus(SessionStatus.REGISTERED);
         session.setSourceRequestId(blankToNull(request.sourceRequestId()));
+        session.setPrice(request.estimatedPrice() != null ? request.estimatedPrice() : 0.0);
+        session.setPaid(false);
+        session.setAppointmentAt(request.appointmentAt());
         session.setRegisteredAt(Instant.now());
+        session.setPortalToken(UUID.randomUUID().toString());
+
+        // Customer CRM Logic
+        if (request.customerPhone() != null && !request.customerPhone().isBlank()) {
+            Customer customer = customerService.getOrCreateCustomer(
+                    request.customerPhone(),
+                    request.customerName(),
+                    request.customerEmail());
+            session.setCustomer(customer);
+        }
         if (request.laneId() != null) {
             session.setLane(getLane(request.laneId()));
         }
         VehicleSession saved = vehicleSessionRepository.save(session);
         auditService.log(cashier, saved, AuditAction.CREATE, "Vehicle session registered", "{\"status\":\"REGISTERED\"}");
         publish("SESSION_CREATED", saved);
+        
+        notificationServices.forEach(service -> service.sendBookingConfirmation(saved));
+        
         return map(saved);
     }
 
@@ -171,9 +201,11 @@ public class SessionServiceImpl implements SessionService {
         signature.setVehicleSession(session);
         signature.setSignedBy(request.signedBy());
         signature.setSignatureDataUrl(request.signatureDataUrl());
+        signature.setSignatureDataUrl(request.signatureDataUrl());
         signatureRepository.save(signature);
-        User actor = getUserByUsername(username);
-        auditService.log(actor, session, AuditAction.UPDATE, "Signature captured", null);
+        
+        User actor = !"CUSTOMER_PORTAL".equals(username) ? getUserByUsername(username) : null;
+        auditService.log(actor, session, AuditAction.UPDATE, "Signature captured via " + username, null);
         publish("SESSION_UPDATED", session);
         return map(session);
     }
@@ -213,9 +245,35 @@ public class SessionServiceImpl implements SessionService {
         session.setStatus(SessionStatus.COMPLETED);
         session.setCompletedAt(Instant.now());
         VehicleSession saved = vehicleSessionRepository.save(session);
+
+        // Update customer loyalty on completion
+        if (saved.getCustomer() != null) {
+            customerService.updateCustomerVisit(saved.getCustomer().getId(), saved.getRegistrationNumber());
+        }
+
         User actor = getUserByUsername(username);
         auditService.log(actor, saved, AuditAction.SESSION_TRANSITION, "Session completed", null);
         publish("SESSION_UPDATED", saved);
+
+        notificationServices.forEach(service -> service.sendSessionComplete(saved));
+
+        return map(saved);
+    }
+
+    @Override
+    @Transactional
+    public VehicleSessionResponse processPayment(Long sessionId, String username) {
+        log.info("Processing payment for session ID: {}", sessionId);
+        VehicleSession session = getSession(sessionId);
+        session.setPaid(true);
+        VehicleSession saved = vehicleSessionRepository.save(session);
+        
+        User actor = !"CUSTOMER_PORTAL".equals(username) ? getUserByUsername(username) : null;
+        auditService.log(actor, saved, AuditAction.UPDATE, "Payment processed via " + username, null);
+        publish("SESSION_UPDATED", saved);
+
+        notificationServices.forEach(service -> service.sendSessionPaymentReceipt(saved));
+
         return map(saved);
     }
 
@@ -235,6 +293,8 @@ public class SessionServiceImpl implements SessionService {
                             session.getOperatorStaff() == null ? null : session.getOperatorStaff().getFullName(),
                             session.getServicePackage(),
                             session.getStatus().name(),
+                            session.getPrice(),
+                            session.getPaid(),
                             session.getRegisteredAt(),
                             session.getCompletedAt(),
                             mats == null ? null : new VehicleSessionDetailResponse.MatsTrackingView(mats.getMatsRemoved(), mats.getMatsReinstalled(), mats.getConditionNotes()),
@@ -242,7 +302,7 @@ public class SessionServiceImpl implements SessionService {
                             inspection == null ? null : new VehicleSessionDetailResponse.InspectionView(inspection.isBodyCheckPassed(), inspection.isInteriorCheckPassed(), inspection.getNotes(), inspection.getCreatedAt())
                     );
                 })
-                .toList();
+                .collect(Collectors.toList());
         return new VehicleHistoryResponse(normalized, history);
     }
 
@@ -260,7 +320,8 @@ public class SessionServiceImpl implements SessionService {
     }
 
     private User getUserByUsername(String username) {
-        return userRepository.findByUsernameAndActiveTrue(username)
+        return userRepository.findByEmailAndActiveTrue(username)
+                .or(() -> userRepository.findByUsernameAndActiveTrue(username))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
     }
 
@@ -274,16 +335,63 @@ public class SessionServiceImpl implements SessionService {
         return value == null || value.isBlank() ? null : value;
     }
 
+    private void validateNoDuplicateActiveSession(Long branchId, String registrationNumber, String customerPhone) {
+        if (customerPhone == null) {
+            return;
+        }
+
+        boolean duplicateExists = !vehicleSessionRepository
+                .findActiveDuplicateForBranch(branchId, registrationNumber, customerPhone)
+                .isEmpty();
+
+        if (duplicateExists) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "An active session already exists for this registration number and phone number in the selected branch");
+        }
+    }
+
     private VehicleSessionResponse map(VehicleSession session) {
+        VehicleSessionResponse.CustomerProfileView customerProfile = null;
+        List<VehicleSessionResponse.CustomerHistoryItem> recentSessions = List.of();
+
+        if (session.getCustomer() != null) {
+            customerProfile = new VehicleSessionResponse.CustomerProfileView(
+                    session.getCustomer().getTotalVisits(),
+                    session.getCustomer().getLoyaltyPoints(),
+                    resolveLoyaltyTier(session.getCustomer()),
+                    session.getCustomer().getLastVehicleRegistration());
+
+            recentSessions = vehicleSessionRepository.findTop6ByCustomerIdOrderByCreatedAtDesc(session.getCustomer().getId())
+                    .stream()
+                    .filter(item -> !item.getId().equals(session.getId()))
+                    .limit(5)
+                    .map(item -> new VehicleSessionResponse.CustomerHistoryItem(
+                            item.getId(),
+                            item.getRegistrationNumber(),
+                            item.getServicePackage(),
+                            item.getStatus(),
+                            item.getPrice(),
+                            item.getPaid(),
+                            item.getAppointmentAt(),
+                            item.getCompletedAt(),
+                            item.getCreatedAt()))
+                    .toList();
+        }
+
         return new VehicleSessionResponse(
                 session.getId(),
                 session.getRegistrationNumber(),
                 session.getCustomerName(),
                 session.getCustomerPhone(),
+                session.getCustomer() == null ? null : session.getCustomer().getEmail(),
                 session.getVehicleType(),
                 session.getServicePackage(),
                 session.getStatus(),
                 session.getDelayReason(),
+                session.getPrice(),
+                session.getPaid(),
+                session.getPortalToken(),
                 session.getBranch().getId(),
                 session.getBranch().getName(),
                 session.getLane() == null ? null : session.getLane().getId(),
@@ -291,18 +399,72 @@ public class SessionServiceImpl implements SessionService {
                 session.getCashierUser().getId(),
                 session.getOperatorStaff() == null ? null : session.getOperatorStaff().getId(),
                 session.getOperatorStaff() == null ? null : session.getOperatorStaff().getFullName(),
+                session.getAppointmentAt(),
                 session.getRegisteredAt(),
                 session.getWashingStartedAt(),
                 session.getInteriorStartedAt(),
                 session.getInspectionStartedAt(),
                 session.getCompletedAt(),
                 session.getCreatedAt(),
-                session.getUpdatedAt()
+                session.getUpdatedAt(),
+                customerProfile,
+                recentSessions
         );
     }
 
+    @Override
+    public VehicleSessionResponse findByPortalToken(String token) {
+        VehicleSession session = vehicleSessionRepository.findByPortalToken(token)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Invalid portal token"));
+        return map(session);
+    }
+
+    @Override
+    public VehicleSessionResponse findActiveByRegistrationAndPhone(String reg, String phone) {
+        List<VehicleSession> sessions = vehicleSessionRepository.findActiveByRegistrationAndPhone(reg.trim().toUpperCase(), phone.trim());
+        if (sessions.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "No active session found for this vehicle and phone number");
+        }
+        return map(sessions.get(0));
+    }
+
+    @Override
+    public VehicleSessionResponse findActiveByRegistrationAndEmail(String reg, String email) {
+        List<VehicleSession> sessions = vehicleSessionRepository.findActiveByRegistrationAndEmail(
+                reg.trim().toUpperCase(),
+                email.trim());
+        if (sessions.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "No active session found for this vehicle and email address");
+        }
+        return map(sessions.get(0));
+    }
+
+    @Override
+    @Transactional
+    public VehicleSessionResponse book(CreateVehicleSessionRequest request) {
+        // Portal bookings use the 'portal' system user as the registrant
+        return create(request, "portal");
+    }
+
     private void publish(String type, VehicleSession session) {
+
         log.info("Publishing realtime event {} for session {}", type, session.getId());
         messagingTemplate.convertAndSend("/topic/sessions", new RealtimeSessionEvent(type, map(session)));
+    }
+
+    private String resolveLoyaltyTier(Customer customer) {
+        int visits = customer.getTotalVisits() == null ? 0 : customer.getTotalVisits();
+        int points = customer.getLoyaltyPoints() == null ? 0 : customer.getLoyaltyPoints();
+
+        if (visits >= 12 || points >= 120) {
+            return "Platinum";
+        }
+        if (visits >= 6 || points >= 60) {
+            return "Gold";
+        }
+        if (visits >= 3 || points >= 30) {
+            return "Silver";
+        }
+        return "Starter";
     }
 }

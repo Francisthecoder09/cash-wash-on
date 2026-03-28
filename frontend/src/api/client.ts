@@ -2,7 +2,7 @@ import { authStore } from '../store/auth';
 import { offlineDb } from '../utils/offlineDb';
 import { API_BASE_URL } from '../utils/constants';
 
-type Method = 'GET' | 'POST';
+type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 async function request<T>(path: string, method: Method = 'GET', body?: unknown, allowQueue = false): Promise<T> {
   const auth = authStore.get();
@@ -12,6 +12,8 @@ async function request<T>(path: string, method: Method = 'GET', body?: unknown, 
   if (auth?.token) {
     headers.Authorization = `Bearer ${auth.token}`;
   }
+
+  console.log(`API ${method} ${path}`, body);
 
   if (!navigator.onLine && method === 'POST' && allowQueue && auth?.token) {
     await offlineDb.queue.add({
@@ -30,6 +32,8 @@ async function request<T>(path: string, method: Method = 'GET', body?: unknown, 
     body: body ? JSON.stringify(body) : undefined
   });
 
+  console.log(`API Response ${path}:`, response.status, response.statusText);
+
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
     throw new Error(errorBody?.message ?? 'Request failed');
@@ -44,5 +48,7 @@ async function request<T>(path: string, method: Method = 'GET', body?: unknown, 
 
 export const api = {
   get: <T>(path: string) => request<T>(path, 'GET'),
-  post: <T>(path: string, body?: unknown, allowQueue = false) => request<T>(path, 'POST', body, allowQueue)
+  post: <T>(path: string, body?: unknown, allowQueue = false) => request<T>(path, 'POST', body, allowQueue),
+  put: <T>(path: string, body?: unknown) => request<T>(path, 'PUT', body),
+  delete: <T>(path: string) => request<T>(path, 'DELETE')
 };

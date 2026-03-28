@@ -40,21 +40,20 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse login(LoginRequest request) {
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.username(), request.password()));
+                new UsernamePasswordAuthenticationToken(request.email(), request.pin()));
         AuthenticatedUser authenticatedUser = (AuthenticatedUser) authentication.getPrincipal();
         User user = userRepository.findById(authenticatedUser.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
 
-        // Only validate role if it was provided in the request
         if (request.role() != null && !user.getRole().equals(request.role())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Selected role does not match user's assigned role");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Access denied: Required role " + request.role() + " not found.");
         }
 
-        auditService.log(user, null, AuditAction.LOGIN, "User logged in with role: " + request.role(), null);
+        auditService.log(user, null, AuditAction.LOGIN, "User logged in with role: " + user.getRole(), null);
         return new AuthResponse(
                 jwtService.generateToken(authenticatedUser),
                 user.getId(),
-                user.getUsername(),
+                user.getEmail(),
                 user.getRole(),
                 user.getBranch().getId(),
                 user.getStaff().getId());

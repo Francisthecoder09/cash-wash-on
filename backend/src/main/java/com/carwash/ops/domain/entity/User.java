@@ -168,34 +168,27 @@ public class User extends BaseEntity { // Inherits id, createdAt, updatedAt
      * length = 80 - Maximum 80 characters
      */
     @Column(nullable = false, length = 80, unique = true)
+    private String email;
+
+    @Column(length = 80, unique = true)
     private String username;
 
-    /**
-     * Password storage - BCrypt hash
-     * 
-     * EXAM TIP: Never store plain-text passwords! Always use hashing.
-     * BCrypt is a slow hash that includes salt automatically.
-     * Length 255 accommodates the BCrypt hash output.
-     */
-    @Column(nullable = false, length = 255)
+    @Column(length = 255)
     private String passwordHash;
 
-    /**
-     * Role field - Authorization
-     * 
-     * @Enumerated(EnumType.STRING) - Store enum as STRING ("ADMIN") not ordinal (0)
-     * This is more readable in the database and safer for comparisons
-     */
-    @Enumerated(EnumType.STRING) // Store as "ADMIN", "CASHIER", etc.
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RoleName role;
 
-    /**
-     * Active flag - Soft delete
-     * 
-     * Instead of deleting users, we just set active = false
-     * This preserves data integrity and audit trails
-     */
     @Column(nullable = false)
-    private boolean active = true; // Default: new users are active
+    private boolean active = true;
+
+    // Getters and Setters
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getPinHash() { return pinHash; }
+    public void setPinHash(String pinHash) { this.pinHash = pinHash; }
 }

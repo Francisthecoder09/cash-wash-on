@@ -4,6 +4,8 @@ package com.carwash.ops;
 import org.springframework.boot.SpringApplication;
 // This annotation combines: @Configuration, @EnableAutoConfiguration, @ComponentScan
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 
 /**
  * CarWashOperationsApplication - Main Entry Point
@@ -26,6 +28,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Everything is configured through Java annotations and properties files.
  */
 @SpringBootApplication // Marks this as a Spring Boot application entry point
+@EnableJpaRepositories(basePackages = "com.carwash.ops.repository")
+@EntityScan(basePackages = "com.carwash.ops.domain.entity")
 public class CarWashOperationsApplication {
 
     /**

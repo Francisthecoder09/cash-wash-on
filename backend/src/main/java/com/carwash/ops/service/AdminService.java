@@ -10,6 +10,7 @@ import com.carwash.ops.domain.entity.Lane;
 import com.carwash.ops.domain.entity.Staff;
 import com.carwash.ops.domain.entity.User;
 import java.util.List;
+import com.carwash.ops.dto.admin.ServiceAdminDTO;
 
 public interface AdminService {
     // Branch operations
@@ -50,4 +51,16 @@ public interface AdminService {
 
     // Dashboard operations
     AdminDashboardResponse getDashboard();
+
+    // Service Type operations
+    List<ServiceAdminDTO.ServiceTypeResponse> getAllServiceTypes();
+    ServiceAdminDTO.ServiceTypeResponse createServiceType(ServiceAdminDTO.CreateServiceRequest request);
+    ServiceAdminDTO.ServiceTypeResponse updateServiceType(Long id, ServiceAdminDTO.UpdateServiceRequest request);
+    void deleteServiceType(Long id);
+
+    // Pricing operations
+    List<ServiceAdminDTO.PricingResponse> getPricingByServiceType(Long serviceTypeId);
+    ServiceAdminDTO.PricingResponse createPricing(ServiceAdminDTO.CreatePricingRequest request);
+    ServiceAdminDTO.PricingResponse updatePricing(Long id, ServiceAdminDTO.UpdatePricingRequest request);
+    void deletePricing(Long id);
 }

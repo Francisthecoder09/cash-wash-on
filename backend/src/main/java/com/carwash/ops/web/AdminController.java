@@ -9,9 +9,14 @@ import com.carwash.ops.dto.admin.CreateBranchRequest;
 import com.carwash.ops.dto.admin.CreateLaneRequest;
 import com.carwash.ops.dto.admin.CreateStaffRequest;
 import com.carwash.ops.dto.admin.CreateUserRequest;
+import com.carwash.ops.dto.admin.StaffResponse;
+import com.carwash.ops.dto.admin.UserResponse;
+import com.carwash.ops.dto.admin.ServiceAdminDTO;
 import com.carwash.ops.service.AdminService;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -99,17 +104,21 @@ public class AdminController {
     // ========== User Endpoints ==========
 
     @PostMapping("/users")
-    public ResponseEntity<User> createUser(@Valid @RequestBody CreateUserRequest request) {
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest request) {
         User user = adminService.createUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(mapToUserResponse(user));
     }
 
     @GetMapping("/users")
-    public ResponseEntity<List<User>> getAllUsers(@RequestParam(required = false) Long branchId) {
+    public ResponseEntity<List<UserResponse>> getAllUsers(@RequestParam(required = false) Long branchId) {
+        List<User> users;
         if (branchId != null) {
-            return ResponseEntity.ok(adminService.getUsersByBranch(branchId));
+            users = adminService.getUsersByBranch(branchId);
+        } else {
+            users = adminService.getAllUsers();
         }
-        return ResponseEntity.ok(adminService.getAllUsers());
+        List<UserResponse> response = users.stream().map(this::mapToUserResponse).collect(Collectors.toList());
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/users/{id}")
@@ -126,10 +135,23 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(staff);
     }
 
+    @Transactional(readOnly = true)
     @GetMapping("/branches/{branchId}/staff")
-    public ResponseEntity<List<Staff>> getStaffByBranch(@PathVariable Long branchId) {
-        return ResponseEntity.ok(adminService.getStaffByBranch(branchId));
+    public ResponseEntity<List<StaffResponse>> getStaffByBranch(@PathVariable Long branchId) {
+        List<StaffResponse> staffList = adminService.getStaffByBranch(branchId).stream()
+                .map(staff -> new StaffResponse(
+                        staff.getId(),
+                        staff.getBranch() != null ? staff.getBranch().getId() : null,
+                        staff.getFullName(),
+                        staff.getEmployeeCode(),
+                        staff.getPhone(),
+                        staff.isActive()))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(staffList);
     }
+
+
+    // Service and Pricing endpoints are now handled by ServiceAdminController
 
     // ========== Dashboard Endpoint ==========
 
@@ -137,5 +159,18 @@ public class AdminController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AdminDashboardResponse> getDashboard() {
         return ResponseEntity.ok(adminService.getDashboard());
+    }
+
+    private UserResponse mapToUserResponse(User user) {
+        UserResponse dto = new UserResponse();
+        dto.setId(user.getId());
+        dto.setUsername(user.getUsername());
+        dto.setRole(user.getRole().name());
+        dto.setActive(user.isActive());
+        dto.setBranchId(user.getBranch() != null ? user.getBranch().getId() : null);
+        if (user.getStaff() != null) {
+            dto.setStaffName(user.getStaff().getFullName());
+        }
+        return dto;
     }
 }

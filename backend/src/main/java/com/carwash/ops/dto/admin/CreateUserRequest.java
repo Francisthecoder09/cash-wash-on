@@ -18,5 +18,6 @@ public class CreateUserRequest {
     @NotNull(message = "Branch ID is required")
     private Long branchId;
 
+    @NotNull(message = "Staff ID is required")
     private Long staffId;
 }

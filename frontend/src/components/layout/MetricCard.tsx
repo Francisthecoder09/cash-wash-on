@@ -1,142 +1,122 @@
-import { Box, Paper, Stack, Typography } from '@mui/material';
+import { alpha, Box, Chip, Paper, Stack, Typography } from '@mui/material';
 import { motion } from 'framer-motion';
-import { ReactNode } from 'react';
-import { TrendingUp, TrendingDown, TrendingFlat } from '@mui/icons-material';
+import { TrendingDown, TrendingFlat, TrendingUp } from '@mui/icons-material';
+import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 
 interface MetricCardProps {
   title: string;
-  value: string | number;
-  subtitle: string;
-  icon?: ReactNode;
+  value: number | string;
+  subtitle?: string;
+  icon?: React.ReactNode;
   color?: string;
   trend?: 'up' | 'down' | 'neutral';
+  sparkData?: number[];
+  badge?: string;
 }
 
-export function MetricCard({ title, value, subtitle, icon, color = '#14b86a', trend }: MetricCardProps) {
-  const getTrendIcon = () => {
-    if (trend === 'up') return <TrendingUp sx={{ fontSize: 20, color: '#14b86a' }} />;
-    if (trend === 'down') return <TrendingDown sx={{ fontSize: 20, color: '#ef4444' }} />;
-    return <TrendingFlat sx={{ fontSize: 20, color: 'text.secondary' }} />;
-  };
+const trendConfig = {
+  up: { icon: <TrendingUp sx={{ fontSize: 16 }} />, color: '#66c28a', label: 'Improving' },
+  down: { icon: <TrendingDown sx={{ fontSize: 16 }} />, color: '#de6f5d', label: 'Watchlist' },
+  neutral: { icon: <TrendingFlat sx={{ fontSize: 16 }} />, color: '#9aa8b0', label: 'Holding' },
+};
 
-  const getTrendColor = () => {
-    if (trend === 'up') return '#14b86a';
-    if (trend === 'down') return '#ef4444';
-    return 'text.secondary';
-  };
+export function MetricCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  color = '#5fb7d4',
+  trend = 'neutral',
+  sparkData,
+  badge,
+}: MetricCardProps) {
+  const tc = trendConfig[trend];
+  const chartData = (sparkData ?? [42, 56, 49, 73, 68, 81, typeof value === 'number' ? value : 76]).map((v, i) => ({ i, v }));
+  const gradientId = `metric-${color.replace('#', '')}`;
 
   return (
     <Paper
       component={motion.div}
-      whileHover={{
-        y: -8,
-        boxShadow: `0 20px 40px ${color}20`
-      }}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, type: 'spring' }}
+      whileHover={{ y: -2 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
       sx={{
-        p: 3,
-        height: '100%',
-        background: 'rgba(15, 27, 22, 0.8)',
-        backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(148, 163, 184, 0.1)',
-        borderRadius: 4,
-        overflow: 'hidden',
+        p: 2.25,
         position: 'relative',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 3,
-          background: `linear-gradient(90deg, ${color} 0%, ${color}80 100%)`
-        }
+        overflow: 'hidden',
+        borderRadius: 4,
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.08))',
+        border: `1px solid ${alpha(color, 0.26)}`,
+        boxShadow: '0 18px 38px rgba(3,10,18,0.2), inset 0 1px 0 rgba(255,255,255,0.14)',
+        backdropFilter: 'blur(24px)',
       }}
     >
-      <Stack spacing={2}>
-        {/* Header with icon */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.75rem' }}
-          >
-            {title}
-          </Typography>
-          {icon && (
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 2,
-                background: `${color}15`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: color
-              }}
-            >
-              {icon}
-            </Box>
-          )}
-        </Box>
+      <Box
+        sx={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          background: `linear-gradient(180deg, ${alpha(color, 0.95)}, ${alpha('#ffffff', 0.55)})`,
+        }}
+      />
 
-        {/* Value with trend */}
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-          <Typography
-            variant="h2"
-            component={motion.span}
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, type: 'spring' }}
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box
             sx={{
-              fontFamily: '"Space Grotesk", sans-serif',
-              fontWeight: 700,
-              color: color,
-              fontSize: '2.5rem',
-              lineHeight: 1
+              width: 44,
+              height: 44,
+              borderRadius: 2.5,
+              display: 'grid',
+              placeItems: 'center',
+              color,
+              background: alpha('#ffffff', 0.12),
+              border: `1px solid ${alpha(color, 0.26)}`,
             }}
           >
-            {value}
-          </Typography>
-          {trend && (
-            <Box
-              component={motion.div}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-              sx={{ display: 'flex', alignItems: 'center', color: getTrendColor() }}
-            >
-              {getTrendIcon()}
-            </Box>
-          )}
-        </Box>
-
-        {/* Subtitle */}
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ fontSize: '0.85rem' }}
-        >
-          {subtitle}
-        </Typography>
-
-        {/* Decorative gradient */}
-        <Box
+            {icon}
+          </Box>
+          <Box>
+            <Typography variant="caption" sx={{ color: 'rgba(222,235,245,0.82)', fontFamily: '"IBM Plex Mono", monospace' }}>
+              {title}
+            </Typography>
+            <Typography sx={{ mt: 0.5, color: '#f4f9fd', fontWeight: 700, fontSize: { xs: '1.9rem', md: '2.35rem' }, lineHeight: 1 }}>
+              {value}
+            </Typography>
+          </Box>
+        </Stack>
+        <Chip
+          icon={tc.icon}
+          label={badge ?? tc.label}
+          size="small"
           sx={{
-            position: 'absolute',
-            bottom: -50,
-            right: -50,
-            width: 150,
-            height: 150,
-            borderRadius: '50%',
-            background: `${color}08`,
-            filter: 'blur(30px)'
+            bgcolor: alpha(tc.color, 0.12),
+            color: tc.color,
+            border: `1px solid ${alpha(tc.color, 0.2)}`,
           }}
         />
       </Stack>
+
+      {subtitle && (
+        <Typography sx={{ mt: 1.5, color: 'rgba(217,230,240,0.84)', maxWidth: 280 }}>
+          {subtitle}
+        </Typography>
+      )}
+
+      <Box sx={{ mt: 2.2, height: 62 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.28} />
+                <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2.1} fill={`url(#${gradientId})`} dot={false} animationDuration={900} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Box>
     </Paper>
   );
 }

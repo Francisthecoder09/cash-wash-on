@@ -8,7 +8,9 @@ import jakarta.persistence.ForeignKey; // Foreign key constraint
 import jakarta.persistence.Index; // Database index
 import jakarta.persistence.JoinColumn; // Foreign key column
 import jakarta.persistence.ManyToOne; // Many-to-one relationship
-import jakarta.persistence.Table; // Table configuration
+import jakarta.persistence.Table;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  * Staff Entity - Represents Employees at a Branch
@@ -35,6 +37,7 @@ import jakarta.persistence.Table; // Table configuration
  * - A staff member might not have system access (no User account)
  */
 @Entity // This class maps to a database table
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 @Table(name = "staff", indexes = {
         // Index on employeeCode for fast lookups
         @Index(name = "idx_staff_code", columnList = "employeeCode")
@@ -106,6 +109,7 @@ public class Staff extends BaseEntity { // Inherits id, createdAt, updatedAt
      */
     @ManyToOne(fetch = FetchType.LAZY, optional = false) // Every staff MUST have a branch
     @JoinColumn(name = "branch_id", nullable = false, foreignKey = @ForeignKey(name = "fk_staff_branch"))
+    @JsonIgnore
     private Branch branch;
 
     // ==================== SIMPLE FIELDS ====================

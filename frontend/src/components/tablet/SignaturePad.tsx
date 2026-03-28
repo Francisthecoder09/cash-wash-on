@@ -16,7 +16,7 @@ export function SignaturePad({ onChange }: SignaturePadProps) {
     if (!context) return;
     context.lineWidth = 3;
     context.lineCap = 'round';
-    context.strokeStyle = '#14b86a';
+    context.strokeStyle = '#0ea5e9';
     context.fillStyle = '#f8fafc';
     context.fillRect(0, 0, canvas.width, canvas.height);
   }, []);

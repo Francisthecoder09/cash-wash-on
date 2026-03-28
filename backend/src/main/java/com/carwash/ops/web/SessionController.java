@@ -79,6 +79,12 @@ public class SessionController {
         return sessionService.complete(sessionId, principal.getName());
     }
 
+    @PostMapping("/{sessionId}/pay")
+    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER')")
+    public VehicleSessionResponse pay(@PathVariable Long sessionId, Principal principal) {
+        return sessionService.processPayment(sessionId, principal.getName());
+    }
+
     // READ — available to all roles including AUDITOR
     @GetMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")

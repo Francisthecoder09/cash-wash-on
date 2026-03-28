@@ -14,19 +14,34 @@ public class DataBootstrapConfig {
 
     public DataBootstrapConfig(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
-    ) {
+            PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Bean
     public CommandLineRunner passwordHashBootstrap() {
-        return args -> userRepository.findAll().forEach(user -> {
-            if (!user.getPasswordHash().startsWith("$2")) {
-                user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
-                userRepository.save(user);
-            }
-        });
+        return args -> {
+            System.out.println("=== PASSWORD HASH BOOTSTRAP STARTING ===");
+            userRepository.findAll().forEach(user -> {
+                String hash = user.getPasswordHash();
+                System.out.println("User: " + user.getEmail() + " | Current hash: "
+                        + hash.substring(0, Math.min(10, hash.length())));
+                // Rehash if not a valid BCrypt hash (starts with $2a or $2b)
+                if (!hash.startsWith("$2a$") && !hash.startsWith("$2b$")) {
+                    System.out.println("  -> Hashing plain text password");
+                    user.setPasswordHash(passwordEncoder.encode(hash));
+                    userRepository.save(user);
+                }
+                // Also handle pin_hash if present
+                String pinHash = user.getPinHash();
+                if (pinHash != null && !pinHash.startsWith("$2a$") && !pinHash.startsWith("$2b$")) {
+                    System.out.println("  -> Hashing PIN");
+                    user.setPinHash(passwordEncoder.encode(pinHash));
+                    userRepository.save(user);
+                }
+            });
+            System.out.println("=== PASSWORD HASH BOOTSTRAP COMPLETE ===");
+        };
     }
 }

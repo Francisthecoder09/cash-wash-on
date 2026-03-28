@@ -4,8 +4,8 @@ import { ReactNode } from 'react';
 
 // Animation keyframes
 export const pulseGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 20px rgba(20, 184, 106, 0.3); }
-  50% { box-shadow: 0 0 40px rgba(20, 184, 106, 0.6); }
+  0%, 100% { box-shadow: 0 0 20px rgba(14, 165, 233, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(14, 165, 233, 0.6); }
 `;
 
 export const shimmer = keyframes`
@@ -57,7 +57,7 @@ export function AnimatedCard({ children, delay = 0, sx, ...props }: AnimatedCard
             }}
             whileHover={{
                 scale: 1.02,
-                boxShadow: '0 20px 60px rgba(20, 184, 106, 0.2)'
+                boxShadow: '0 20px 60px rgba(14, 165, 233, 0.2)'
             }}
         >
             <Box sx={{ ...sx }} {...props}>
@@ -93,7 +93,7 @@ interface GlowingIndicatorProps {
     active?: boolean;
 }
 
-export function GlowingIndicator({ color = '#14b86a', size = 12, active = true }: GlowingIndicatorProps) {
+export function GlowingIndicator({ color = '#0ea5e9', size = 12, active = true }: GlowingIndicatorProps) {
     return (
         <Box
             sx={{
@@ -119,9 +119,9 @@ export function GradientBackground({ children }: GradientBackgroundProps) {
             sx={{
                 minHeight: '100vh',
                 background: `
-          radial-gradient(ellipse at 20% 20%, rgba(20, 184, 106, 0.15) 0%, transparent 50%),
+          radial-gradient(ellipse at 20% 20%, rgba(14, 165, 233, 0.15) 0%, transparent 50%),
           radial-gradient(ellipse at 80% 80%, rgba(245, 185, 66, 0.1) 0%, transparent 50%),
-          radial-gradient(ellipse at 50% 50%, rgba(20, 184, 106, 0.05) 0%, transparent 70%),
+          radial-gradient(ellipse at 50% 50%, rgba(14, 165, 233, 0.05) 0%, transparent 70%),
           linear-gradient(135deg, #08110d 0%, #0f2920 50%, #103624 100%)
         `,
                 backgroundSize: '200% 200%',
@@ -197,7 +197,7 @@ export const buttonHoverProps = {
 export const cardHoverProps = {
     whileHover: {
         scale: 1.02,
-        boxShadow: '0 25px 50px -12px rgba(20, 184, 106, 0.25)'
+        boxShadow: '0 25px 50px -12px rgba(14, 165, 233, 0.25)'
     },
     transition: { type: 'spring', stiffness: 300 }
 };

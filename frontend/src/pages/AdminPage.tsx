@@ -31,9 +31,12 @@ import {
     Grid2
 } from '@mui/material';
 import { Add, Delete, Edit, Store, DirectionsCar, People, Speed } from '@mui/icons-material';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Branch, Lane, User, Staff, Role, AdminDashboard, CreateBranchRequest, CreateLaneRequest, CreateUserRequest, CreateStaffRequest } from '../types';
 import { branchApi, laneApi, userApi, staffApi, dashboardApi } from '../api/admin';
+import { ServicesTab } from './ServicesTab';
+import CustomersTab from './CustomersTab';
+import { PremiumScene } from '../components/layout/PremiumScene';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -60,6 +63,15 @@ export function AdminPage() {
     const [staff, setStaff] = useState<Staff[]>([]);
     const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
     const [loading, setLoading] = useState(false);
+    
+    // Branch Level Metrics
+    const [selectedDashboardBranch, setSelectedDashboardBranch] = useState<number>(0);
+    const [branchMetrics, setBranchMetrics] = useState<{
+        todayRevenue: number;
+        activeSessions: number;
+        statusBreakdown: Record<string, number>;
+        servicesBreakdown: Record<string, number>;
+    } | null>(null);
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
 
     // Dialog states
@@ -71,7 +83,7 @@ export function AdminPage() {
     // Form states
     const [branchForm, setBranchForm] = useState<CreateBranchRequest>({ name: '', location: '', timezone: 'Africa/Accra' });
     const [laneForm, setLaneForm] = useState<CreateLaneRequest>({ laneName: '', branchId: 0, displayOrder: 1 });
-    const [userForm, setUserForm] = useState<CreateUserRequest>({ username: '', password: '', role: 'CASHIER', branchId: 0, staffId: undefined });
+    const [userForm, setUserForm] = useState<CreateUserRequest>({ email: '', pin: '', role: 'CASHIER', branchId: 0, staffId: 0 });
     const [staffForm, setStaffForm] = useState<CreateStaffRequest>({ fullName: '', employeeCode: '', phone: '', branchId: 0 });
 
     useEffect(() => {
@@ -90,6 +102,33 @@ export function AdminPage() {
         }
     };
 
+    const loadBranchMetrics = async (branchId: number) => {
+        if (!branchId) return;
+        try {
+            const [rev, active, status, services] = await Promise.all([
+                dashboardApi.getTodayRevenue(branchId),
+                dashboardApi.getActiveSessionsCount(branchId),
+                dashboardApi.getSessionStatusBreakdown(branchId),
+                dashboardApi.getPopularServicesBreakdown(branchId)
+            ]);
+            setBranchMetrics({
+                todayRevenue: rev,
+                activeSessions: active,
+                statusBreakdown: status,
+                servicesBreakdown: services
+            });
+        } catch (error) {
+            console.error('Failed to load branch metrics:', error);
+            showSnackbar('Failed to load branch metrics', 'error');
+        }
+    };
+
+    useEffect(() => {
+        if (selectedDashboardBranch > 0) {
+            loadBranchMetrics(selectedDashboardBranch);
+        }
+    }, [selectedDashboardBranch]);
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -107,6 +146,7 @@ export function AdminPage() {
                 setLaneForm(prev => ({ ...prev, branchId: branchesData[0].id }));
                 setUserForm(prev => ({ ...prev, branchId: branchesData[0].id }));
                 setStaffForm(prev => ({ ...prev, branchId: branchesData[0].id }));
+                setSelectedDashboardBranch(branchesData[0].id);
             }
         } catch (error) {
             showSnackbar('Failed to load data', 'error');
@@ -116,11 +156,23 @@ export function AdminPage() {
     };
 
     const loadStaff = async (branchId: number) => {
+        // Validate branchId
+        if (!branchId || branchId <= 0) {
+            console.log('loadStaff: invalid branchId:', branchId);
+            setStaff([]);
+            return;
+        }
         try {
+            console.log('Loading staff for branch:', branchId);
             const staffData = await staffApi.getByBranch(branchId);
+            console.log('Staff data loaded:', staffData);
             setStaff(staffData);
+            if (staffData.length === 0) {
+                showSnackbar('No staff found for this branch. Please add staff first.', 'error');
+            }
         } catch (error) {
-            showSnackbar('Failed to load staff', 'error');
+            console.error('Failed to load staff:', error);
+            showSnackbar('Failed to load staff: ' + (error as Error).message, 'error');
         }
     };
 
@@ -196,9 +248,9 @@ export function AdminPage() {
 
     // User handlers
     const handleSaveUser = async () => {
-        // Validate required fields
-        if (!userForm.username || !userForm.password || !userForm.branchId || !userForm.role) {
-            showSnackbar('Please fill in all required fields', 'error');
+        // Validate required fields - ensure staffId is not 0 (not selected)
+        if (!userForm.email || !userForm.pin || !userForm.branchId || !userForm.role || userForm.staffId === 0) {
+            showSnackbar('Please fill in all required fields (including Staff Member)', 'error');
             return;
         }
         try {
@@ -224,13 +276,17 @@ export function AdminPage() {
 
     // Staff handlers
     const handleSaveStaff = async () => {
+        if (!staffForm.fullName || !staffForm.employeeCode || !staffForm.branchId) {
+            showSnackbar('Please fill in all required fields', 'error');
+            return;
+        }
         try {
             await staffApi.create(staffForm);
             showSnackbar('Staff created successfully', 'success');
             setStaffDialog({ open: false });
             loadStaff(staffForm.branchId);
         } catch (error) {
-            showSnackbar('Failed to create staff', 'error');
+            showSnackbar('Failed to create staff: ' + (error as Error).message, 'error');
         }
     };
 
@@ -246,10 +302,16 @@ export function AdminPage() {
     };
 
     const openUserDialog = () => {
-        const defaultBranchId = branches.length > 0 ? branches[0].id : 0;
-        setUserForm({ username: '', password: '', role: 'CASHIER', branchId: defaultBranchId, staffId: undefined });
-        if (defaultBranchId) {
+        const branchList = branches.filter(b => b && b.id);
+        const defaultBranchId = branchList.length > 0 ? branchList[0].id : 0;
+        console.log('openUserDialog - branches:', branches, 'defaultBranchId:', defaultBranchId);
+        setUserForm({ email: '', pin: '', role: 'CASHIER', branchId: defaultBranchId, staffId: 0 });
+        if (defaultBranchId > 0) {
             loadStaff(defaultBranchId);
+        } else {
+            console.log('No valid branch ID found, branches:', branches);
+            showSnackbar('No branches available. Please create a branch first.', 'error');
+            return;
         }
         setUserDialog({ open: true });
     };
@@ -261,22 +323,78 @@ export function AdminPage() {
 
     const handleBranchChange = (event: SelectChangeEvent<number>) => {
         const branchId = event.target.value as number;
+        if (!branchId || branchId <= 0) {
+            setUserForm({ ...userForm, branchId: 0, staffId: 0 });
+            setStaff([]);
+            return;
+        }
         setUserForm({ ...userForm, branchId, staffId: 0 });
         loadStaff(branchId);
     };
 
     return (
-        <Box sx={{ width: '100%', p: 3 }}>
-            <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
-                Admin Management
-            </Typography>
+        <Box sx={{ width: '100%', p: { xs: 0, md: 1 } }}>
+            <Grid2 container spacing={3} sx={{ mb: 3 }}>
+                <Grid2 size={{ xs: 12, xl: 7 }}>
+                    <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', overflow: 'hidden', position: 'relative' }}>
+                        <Box sx={{ position: 'relative', zIndex: 1 }}>
+                            <Chip label="Administrative Control" sx={{ mb: 2, bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
+                            <Typography variant="h2" sx={{ mb: 1.5, maxWidth: 760, color: '#eef2f4', lineHeight: 1.02 }}>
+                                Branch management simplified into a cleaner operational back office
+                            </Typography>
+                            <Typography sx={{ maxWidth: 620, color: 'rgba(154,168,176,0.86)', mb: 2.5 }}>
+                                Manage branches, services, lanes, users, and operating insights from a more disciplined layout with less visual noise and faster scanning.
+                            </Typography>
+                            <Grid2 container spacing={1.5}>
+                                <Grid2 size={{ xs: 12, sm: 4 }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(95,183,212,0.14)' }}>
+                                        <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
+                                            Branches
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ mt: 0.5, color: '#eef2f4' }}>{branches.length}</Typography>
+                                    </Paper>
+                                </Grid2>
+                                <Grid2 size={{ xs: 12, sm: 4 }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(102,194,138,0.14)' }}>
+                                        <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
+                                            Users
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ mt: 0.5, color: '#eef2f4' }}>{users.length}</Typography>
+                                    </Paper>
+                                </Grid2>
+                                <Grid2 size={{ xs: 12, sm: 4 }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(240,180,76,0.14)' }}>
+                                        <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
+                                            Lanes
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ mt: 0.5, color: '#eef2f4' }}>{lanes.length}</Typography>
+                                    </Paper>
+                                </Grid2>
+                            </Grid2>
+                        </Box>
+                    </Paper>
+                </Grid2>
+                <Grid2 size={{ xs: 12, xl: 5 }}>
+                    <PremiumScene
+                        height="100%"
+                        sx={{
+                            minHeight: 280,
+                            '& .premium-scene-grid': {
+                                opacity: 0.28,
+                            },
+                        }}
+                    />
+                </Grid2>
+            </Grid2>
 
-            <Card>
+            <Card sx={{ overflow: 'hidden' }}>
                 <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tab label="Overview" />
                     <Tab label="Branches" />
                     <Tab label="Lanes" />
                     <Tab label="Users" />
+                    <Tab label="Services" />
+                    <Tab label="Customers" />
                 </Tabs>
 
                 {/* Overview Tab */}
@@ -339,6 +457,88 @@ export function AdminPage() {
                                 </Grid2>
                             </Grid2>
 
+                            {/* Branch Metrics Selector and Display */}
+                            <Grid2 container spacing={3} sx={{ mb: 4 }}>
+                                <Grid2 size={{ xs: 12 }}>
+                                    <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <Typography variant="h6">Branch Level Analytics</Typography>
+                                        <FormControl sx={{ minWidth: 200 }}>
+                                            <InputLabel>Select Branch</InputLabel>
+                                            <Select
+                                                value={selectedDashboardBranch || ''}
+                                                label="Select Branch"
+                                                onChange={(e) => setSelectedDashboardBranch(e.target.value as number)}
+                                            >
+                                                {branches.map(branch => (
+                                                    <MenuItem key={branch.id} value={branch.id}>{branch.name}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Paper>
+                                </Grid2>
+
+                                {branchMetrics && (
+                                    <>
+                                        <Grid2 size={{ xs: 12, md: 6 }}>
+                                            <Paper sx={{ p: 3, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                <Typography variant="h6" color="textSecondary" gutterBottom>Today's Revenue</Typography>
+                                                <Typography variant="h3" sx={{ color: '#2e7d32', fontWeight: 'bold' }}>
+                                                    ${branchMetrics.todayRevenue.toFixed(2)}
+                                                </Typography>
+                                            </Paper>
+                                        </Grid2>
+                                        <Grid2 size={{ xs: 12, md: 6 }}>
+                                            <Paper sx={{ p: 3, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                <Typography variant="h6" color="textSecondary" gutterBottom>Active Operations</Typography>
+                                                <Typography variant="h3" sx={{ color: '#ed6c02', fontWeight: 'bold' }}>
+                                                    {branchMetrics.activeSessions} Sessions
+                                                </Typography>
+                                            </Paper>
+                                        </Grid2>
+
+                                        <Grid2 size={{ xs: 12, md: 6 }}>
+                                            <Paper sx={{ p: 3 }}>
+                                                <Typography variant="h6" sx={{ mb: 2 }}>Session Status Distribution</Typography>
+                                                <ResponsiveContainer width="100%" height={300}>
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={Object.entries(branchMetrics.statusBreakdown).map(([name, value]) => ({ name, value }))}
+                                                            dataKey="value"
+                                                            nameKey="name"
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            outerRadius={80}
+                                                            label
+                                                        >
+                                                            {Object.keys(branchMetrics.statusBreakdown).map((_, index) => (
+                                                                <Cell key={`cell-${index}`} fill={['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'][index % 5]} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip />
+                                                        <Legend />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </Paper>
+                                        </Grid2>
+
+                                        <Grid2 size={{ xs: 12, md: 6 }}>
+                                            <Paper sx={{ p: 3 }}>
+                                                <Typography variant="h6" sx={{ mb: 2 }}>Popular Services Today</Typography>
+                                                <ResponsiveContainer width="100%" height={300}>
+                                                    <BarChart data={Object.entries(branchMetrics.servicesBreakdown).map(([name, value]) => ({ name, value }))} layout="vertical">
+                                                        <CartesianGrid strokeDasharray="3 3" />
+                                                        <XAxis type="number" />
+                                                        <YAxis dataKey="name" type="category" width={100} />
+                                                        <Tooltip />
+                                                        <Bar dataKey="value" fill="#8884d8" name="Count" />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </Paper>
+                                        </Grid2>
+                                    </>
+                                )}
+                            </Grid2>
+
                             {/* Charts */}
                             <Grid2 container spacing={3}>
                                 {/* Daily Trend Chart */}
@@ -351,7 +551,7 @@ export function AdminPage() {
                                                 <XAxis dataKey="date" />
                                                 <YAxis />
                                                 <Tooltip />
-                                                <Bar dataKey="count" fill="#14b86a" name="Vehicles" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="count" fill="#0ea5e9" name="Vehicles" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </Paper>
@@ -511,7 +711,12 @@ export function AdminPage() {
                 {/* Users Tab */}
                 <TabPanel value={tab} index={3}>
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button variant="contained" startIcon={<Add />} onClick={openUserDialog} disabled={branches.length === 0}>
+                        <Button
+                            variant="contained"
+                            startIcon={<Add />}
+                            onClick={openUserDialog}
+                            disabled={branches.length === 0 || loading}
+                        >
                             Add User
                         </Button>
                     </Box>
@@ -520,7 +725,7 @@ export function AdminPage() {
                             <TableHead>
                                 <TableRow>
                                     <TableCell>ID</TableCell>
-                                    <TableCell>Username</TableCell>
+                                    <TableCell>Email Address</TableCell>
                                     <TableCell>Role</TableCell>
                                     <TableCell>Branch</TableCell>
                                     <TableCell>Staff</TableCell>
@@ -532,7 +737,7 @@ export function AdminPage() {
                                 {users.map((user) => (
                                     <TableRow key={user.id}>
                                         <TableCell>{user.id}</TableCell>
-                                        <TableCell>{user.username}</TableCell>
+                                        <TableCell>{user.email}</TableCell>
                                         <TableCell><Chip label={user.role} size="small" /></TableCell>
                                         <TableCell>{branches.find(b => b.id === user.branchId)?.name || 'N/A'}</TableCell>
                                         <TableCell>{user.staffName || 'N/A'}</TableCell>
@@ -548,7 +753,17 @@ export function AdminPage() {
                         </Table>
                     </TableContainer>
                 </TabPanel>
+
+                {/* Services Tab */}
+                <TabPanel value={tab} index={4}>
+                    <ServicesTab showSnackbar={showSnackbar} />
+                </TabPanel>
+
+                <TabPanel value={tab} index={5}>
+                    <CustomersTab />
+                </TabPanel>
             </Card>
+
 
             {/* Branch Dialog */}
             <Dialog open={branchDialog.open} onClose={() => setBranchDialog({ open: false })} maxWidth="sm" fullWidth>
@@ -648,17 +863,18 @@ export function AdminPage() {
                     </FormControl>
                     <TextField
                         fullWidth
-                        label="Username"
-                        value={userForm.username}
-                        onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                        label="Email Address"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                         sx={{ mb: 2 }}
                     />
                     <TextField
                         fullWidth
-                        label="Password"
+                        label="Login PIN"
                         type="password"
-                        value={userForm.password}
-                        onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                        value={userForm.pin}
+                        inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                        onChange={(e) => setUserForm({ ...userForm, pin: e.target.value })}
                         sx={{ mb: 2 }}
                     />
                     <FormControl fullWidth>

@@ -2,22 +2,33 @@ import { Alert, Box, Button, Chip, Grid2, IconButton, MenuItem, Paper, Stack, Te
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { PremiumScene } from '../components/layout/PremiumScene';
 import { SessionStatusChip } from '../components/layout/SessionStatusChip';
 import { authStore } from '../store/auth';
 import { useHasRole } from '../components/auth/RoleGuard';
 import { RealtimeSessionEvent, SelectOption, VehicleSession, ServiceType, Pricing } from '../types';
 import { formatDateTime } from '../utils/format';
 import { WS_URL } from '../utils/constants';
+import { getAdminBranchPreference, saveAdminBranchPreference } from '../utils/adminBranchPreference';
 import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff, Payments, ContentCopy } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
 import { servicesApi, sessionApi } from '../api/admin';
 
+const sanitizePhone = (value: string) => {
+  const trimmed = value.replace(/[^\d+]/g, '');
+  const digits = trimmed.replace(/\D/g, '').slice(0, 13);
+  return trimmed.startsWith('+') ? `+${digits}` : digits;
+};
+
 export function SessionsPage() {
   const auth = authStore.get();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState<VehicleSession[]>([]);
   const [lanes, setLanes] = useState<SelectOption[]>([]);
+  const [branches, setBranches] = useState<SelectOption[]>([]);
   const [message, setMessage] = useState('Live session board connected');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,17 +37,34 @@ export function SessionsPage() {
   const [selectedVehicleType, setSelectedVehicleType] = useState('SUV');
   const [estimatedPrice, setEstimatedPrice] = useState<number>(0);
   const [pricingMatrix, setPricingMatrix] = useState<Pricing[]>([]);
+  const isAdmin = auth?.role === 'ADMIN';
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(
+    isAdmin ? getAdminBranchPreference(auth?.branchId) : String(auth?.branchId ?? ''),
+  );
 
   // Role-based visibility flags
   const canCreateSession = useHasRole('ADMIN', 'BRANCH_MANAGER', 'CASHIER');
   const canOperateLane = useHasRole('ADMIN', 'BRANCH_MANAGER', 'LANE_OPERATOR');
   const canInspect = useHasRole('ADMIN', 'BRANCH_MANAGER', 'INSPECTOR');
 
-  const load = () => api.get<VehicleSession[]>(`/sessions?branchId=${auth?.branchId}`).then(setSessions);
+  const effectiveBranchId = selectedBranchId === 'ALL' ? null : Number(selectedBranchId || auth?.branchId);
+  const effectiveBranchIdRef = useRef<number | null>(effectiveBranchId);
+  const canCreateInCurrentView = canCreateSession && effectiveBranchId !== null;
 
   useEffect(() => {
-    load();
-    api.get<SelectOption[]>(`/reference/branches/${auth?.branchId}/lanes`).then(setLanes);
+    effectiveBranchIdRef.current = effectiveBranchId;
+    if (isAdmin) {
+      saveAdminBranchPreference(selectedBranchId);
+    }
+  }, [effectiveBranchId, isAdmin, selectedBranchId]);
+
+  const load = (branchId = effectiveBranchIdRef.current) => {
+    const query = branchId ? `/sessions?branchId=${branchId}` : '/sessions';
+    return api.get<VehicleSession[]>(query).then(setSessions);
+  };
+
+  useEffect(() => {
+    api.get<SelectOption[]>('/reference/branches').then(setBranches);
     servicesApi.getAll(true).then(setServices);
 
     // Online/offline detection
@@ -54,15 +82,10 @@ export function SessionsPage() {
       setMessage('Live session board connected');
       client.subscribe('/topic/sessions', (payload) => {
         const event = JSON.parse(payload.body) as RealtimeSessionEvent;
-        setSessions((current) => {
-          const index = current.findIndex((item) => item.id === event.session.id);
-          if (index >= 0) {
-            const next = [...current];
-            next[index] = event.session;
-            return next;
-          }
-          return [event.session, ...current];
-        });
+        const currentBranchId = effectiveBranchIdRef.current;
+        if (currentBranchId === null || event.session.branchId === currentBranchId) {
+          void load(currentBranchId);
+        }
       });
     };
     client.onDisconnect = () => {
@@ -76,6 +99,15 @@ export function SessionsPage() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    void load();
+    if (effectiveBranchId) {
+      api.get<SelectOption[]>(`/reference/branches/${effectiveBranchId}/lanes`).then(setLanes);
+      return;
+    }
+    setLanes([]);
+  }, [effectiveBranchId]);
 
   useEffect(() => {
     if (selectedServiceId) {
@@ -102,12 +134,16 @@ export function SessionsPage() {
 
   const createSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!effectiveBranchId) {
+      setMessage('Select a specific branch before registering a new session.');
+      return;
+    }
     setIsLoading(true);
     const formData = new FormData(event.currentTarget);
     try {
       await api.post('/sessions', {
-        branchId: auth?.branchId,
-        laneId: Number(formData.get('laneId')),
+        branchId: effectiveBranchId ?? auth?.branchId,
+        laneId: formData.get('laneId') ? Number(formData.get('laneId')) : null,
         registrationNumber: formData.get('registrationNumber'),
         customerName: formData.get('customerName'),
         customerPhone: formData.get('customerPhone'),
@@ -119,6 +155,10 @@ export function SessionsPage() {
       setMessage(navigator.onLine ? 'Session created successfully' : 'Offline: registration queued for sync');
       load();
       event.currentTarget.reset();
+      setSelectedServiceId('');
+      setSelectedVehicleType('SUV');
+      setEstimatedPrice(0);
+      setPricingMatrix([]);
     } catch (err) {
       setMessage(`Error: ${(err as Error).message}`);
     } finally {
@@ -129,6 +169,8 @@ export function SessionsPage() {
   const nextAction = async (session: VehicleSession) => {
     if (session.status === 'REGISTERED' && canOperateLane) {
       await api.post(`/sessions/${session.id}/start-wash`, { laneId: session.laneId, operatorStaffId: auth?.staffId }, true);
+      navigate(`/tablet?sessionId=${session.id}`);
+      return;
     } else if (session.status === 'WASHING' && canOperateLane) {
       await api.post(`/sessions/${session.id}/record-mats`, { matsRemoved: 4, matsReinstalled: 4, conditionNotes: 'All mats cleaned' }, true);
     } else if (session.status === 'INTERIOR' && canInspect) {
@@ -176,28 +218,52 @@ export function SessionsPage() {
       transition={{ duration: 0.5 }}
     >
       <Stack spacing={4}>
-        {/* Header */}
-        <Box>
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Typography
-              variant="h3"
-              sx={{
-                fontFamily: '"Space Grotesk", sans-serif',
-                fontWeight: 700,
-                mb: 1
-              }}
-            >
-              Session Command Center
-            </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: '1.05rem' }}>
-              Monitor the live wash queue. Your role ({auth?.role}) controls which actions are available.
-            </Typography>
-          </motion.div>
-        </Box>
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Grid2 container spacing={3} alignItems="stretch">
+            <Grid2 size={{ xs: 12, xl: 7 }}>
+              <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', position: 'relative', overflow: 'hidden' }}>
+                <Stack spacing={2.25}>
+                  <Chip label="Session Board" sx={{ width: 'fit-content', bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
+                  <Typography variant="h2" sx={{ color: '#eef2f4', lineHeight: 1.03, maxWidth: 720 }}>
+                    Live queue control built to feel practical, readable, and ready for floor operations
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(154,168,176,0.86)', maxWidth: 620 }}>
+                    Monitor the wash board, move vehicles through the flow, and keep branch operations readable at a glance. Your current role is {auth?.role}.
+                  </Typography>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} useFlexGap flexWrap="wrap">
+                    <Chip label={`${sessions.length} sessions in view`} sx={{ bgcolor: 'rgba(95,183,212,0.12)', color: '#8fd0e6' }} />
+                    <Chip label={isOnline ? 'Realtime connected' : 'Offline mode'} sx={{ bgcolor: isOnline ? 'rgba(102,194,138,0.12)' : 'rgba(240,180,76,0.12)', color: isOnline ? '#8fd7a7' : '#f5cb7f' }} />
+                    <Chip label={effectiveBranchId === null ? 'All branches' : `Branch ${effectiveBranchId}`} sx={{ bgcolor: 'rgba(154,168,176,0.12)', color: '#c4ccd1' }} />
+                  </Stack>
+                  <Box sx={{ maxWidth: 430 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Viewing Branch"
+                      value={selectedBranchId}
+                      onChange={(event) => setSelectedBranchId(event.target.value)}
+                      sx={{ minWidth: 240 }}
+                    >
+                      {isAdmin && <MenuItem value="ALL">All Branches</MenuItem>}
+                      {branches.map((branch) => (
+                        <MenuItem key={branch.id} value={String(branch.id)}>
+                          {branch.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid2>
+            <Grid2 size={{ xs: 12, xl: 5 }}>
+              <PremiumScene height="100%" sx={{ minHeight: 280 }} />
+            </Grid2>
+          </Grid2>
+        </motion.div>
 
         {/* Status Alert */}
         <motion.div
@@ -257,11 +323,17 @@ export function SessionsPage() {
                     </Box>
                     <Typography variant="h5" sx={{ fontWeight: 700 }}>New Vehicle Session</Typography>
                   </Box>
+                  {!canCreateInCurrentView && (
+                    <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                      Select a specific branch to register a new staff session.
+                    </Alert>
+                  )}
                   <Stack component="form" spacing={2} onSubmit={createSession}>
                     <TextField
                       label="Registration Number"
                       name="registrationNumber"
                       required
+                      disabled={!canCreateInCurrentView}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
@@ -270,8 +342,17 @@ export function SessionsPage() {
                         }
                       }}
                     />
-                    <TextField label="Customer Name" name="customerName" required sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                    <TextField label="Customer Phone" name="customerPhone" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                    <TextField label="Customer Name" name="customerName" required disabled={!canCreateInCurrentView} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                    <TextField
+                      label="Customer Phone"
+                      name="customerPhone"
+                      disabled={!canCreateInCurrentView}
+                      onChange={(e) => {
+                        e.currentTarget.value = sanitizePhone(e.currentTarget.value);
+                      }}
+                      inputProps={{ inputMode: 'tel', pattern: '[0-9+]*', maxLength: 14 }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
                     <TextField
                       select
                       label="Vehicle Type"
@@ -279,6 +360,7 @@ export function SessionsPage() {
                       value={selectedVehicleType}
                       onChange={(e) => setSelectedVehicleType(e.target.value)}
                       required
+                      disabled={!canCreateInCurrentView}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     >
                       <MenuItem value="SEDAN">SEDAN / HATCHBACK</MenuItem>
@@ -293,11 +375,12 @@ export function SessionsPage() {
                       value={selectedServiceId}
                       onChange={(e) => setSelectedServiceId(Number(e.target.value))}
                       required
+                      disabled={!canCreateInCurrentView}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     >
                       {services.map((s) => (
                         <MenuItem key={s.id} value={s.id}>
-                          {s.serviceName} (GH₵{s.basePrice.toFixed(2)})
+                          {s.serviceName} (GHS {s.basePrice.toFixed(2)})
                         </MenuItem>
                       ))}
                     </TextField>
@@ -327,6 +410,7 @@ export function SessionsPage() {
                       name="laneId"
                       defaultValue={lanes[0]?.id ?? ''}
                       required
+                      disabled={!canCreateInCurrentView}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     >
                       {lanes.map((lane) => <MenuItem key={lane.id} value={lane.id}>{lane.label}</MenuItem>)}
@@ -335,7 +419,7 @@ export function SessionsPage() {
                       type="submit"
                       variant="contained"
                       size="large"
-                      disabled={isLoading}
+                      disabled={isLoading || !canCreateInCurrentView}
                       sx={{
                         py: 1.5,
                         fontWeight: 700,
@@ -413,7 +497,7 @@ export function SessionsPage() {
                                 </Typography>
                               </Box>
                               <Typography color="text.secondary" sx={{ fontSize: '0.9rem' }}>
-                                {session.customerName} • {session.servicePackage}
+                                {session.customerName} - {session.servicePackage}
                               </Typography>
                               {session.price !== undefined && (
                                 <Typography sx={{ color: '#0ea5e9', fontWeight: 700, fontSize: '1.1rem', mt: 1 }}>
@@ -496,7 +580,7 @@ export function SessionsPage() {
                                   borderRadius: 1
                                 }}
                               >
-                                ⛔ Your role ({auth?.role}) cannot advance this step
+                                Your role ({auth?.role}) cannot advance this step
                               </Typography>
                             )
                           )}
@@ -506,6 +590,21 @@ export function SessionsPage() {
                   </Grid2>
                 ))}
               </AnimatePresence>
+              {sessions.length === 0 && (
+                <Grid2 size={{ xs: 12 }}>
+                  <Paper sx={{ p: 4, borderRadius: 4, bgcolor: 'rgba(15, 27, 22, 0.55)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                    <Stack spacing={1} alignItems="center" textAlign="center">
+                      <DirectionsCar sx={{ color: 'rgba(148,163,184,0.6)', fontSize: 36 }} />
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        No sessions in this branch view
+                      </Typography>
+                      <Typography color="text.secondary">
+                        New portal bookings and staff registrations will appear here for the selected branch.
+                      </Typography>
+                    </Stack>
+                  </Paper>
+                </Grid2>
+              )}
             </Grid2>
           </Grid2>
         </Grid2>

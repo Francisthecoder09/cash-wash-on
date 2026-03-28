@@ -128,6 +128,15 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
         this.vehicleType = vehicleType;
     }
 
+    /** @return Unique token for customer portal access */
+    public String getPortalToken() {
+        return portalToken;
+    }
+
+    public void setPortalToken(String portalToken) {
+        this.portalToken = portalToken;
+    }
+
     /**
      * @return The service package selected (e.g., "Basic Wash", "Premium Detail")
      */
@@ -137,6 +146,15 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
 
     public void setServicePackage(String servicePackage) {
         this.servicePackage = servicePackage;
+    }
+
+    /** @return The customer associated with this session */
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(Customer customer) {
+        this.customer = customer;
     }
 
     /** @return Current status in the workflow */
@@ -155,6 +173,33 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
 
     public void setSourceRequestId(String sourceRequestId) {
         this.sourceRequestId = sourceRequestId;
+    }
+
+    /** @return The amount charged for this session */
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
+    }
+
+    /** @return Whether the session has been paid for */
+    public Boolean getPaid() {
+        return paid;
+    }
+
+    public void setPaid(Boolean paid) {
+        this.paid = paid;
+    }
+
+    /** @return When the vehicle was first registered */
+    public java.time.Instant getAppointmentAt() {
+        return appointmentAt;
+    }
+
+    public void setAppointmentAt(java.time.Instant appointmentAt) {
+        this.appointmentAt = appointmentAt;
     }
 
     /** @return When the vehicle was first registered */
@@ -245,6 +290,14 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
     @JoinColumn(name = "operator_staff_id", foreignKey = @ForeignKey(name = "fk_session_operator_staff"))
     private Staff operatorStaff;
 
+    /**
+     * Link to Customer CRM record
+     * Optional - a session might be for an anonymous customer initially
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id", foreignKey = @ForeignKey(name = "fk_session_customer"))
+    private Customer customer;
+
     // ==================== SIMPLE FIELDS ====================
 
     /** Vehicle license plate - used for identification and history lookup */
@@ -262,6 +315,10 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
     /** Type of vehicle - affects pricing and process */
     @Column(name = "vehicle_type", nullable = false, length = 50)
     private String vehicleType;
+
+    /** Unique token for customer portal access */
+    @Column(name = "portal_token", unique = true, length = 100)
+    private String portalToken;
 
     /** Service package selected - determines process and price */
     @Column(name = "service_package", nullable = false, length = 80)
@@ -282,6 +339,18 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
     /** External system integration ID - allows matching with external requests */
     @Column(name = "source_request_id", length = 80, unique = true)
     private String sourceRequestId;
+
+    /** Total price for the service */
+    @Column(name = "price")
+    private Double price = 0.0;
+
+    /** Payment status */
+    @Column(name = "is_paid")
+    private Boolean paid = false;
+
+    /** Optional future appointment time chosen during booking */
+    @Column(name = "appointment_at")
+    private Instant appointmentAt;
 
     /**
      * TIMESTAMPS - Each phase has its own timestamp!

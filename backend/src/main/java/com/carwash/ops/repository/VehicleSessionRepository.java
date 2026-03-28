@@ -13,8 +13,40 @@ import org.springframework.data.repository.query.Param;
 public interface VehicleSessionRepository
                 extends JpaRepository<VehicleSession, Long>, JpaSpecificationExecutor<VehicleSession> {
         Optional<VehicleSession> findBySourceRequestId(String sourceRequestId);
+        Optional<VehicleSession> findByPortalToken(String portalToken);
 
         List<VehicleSession> findByRegistrationNumberOrderByCreatedAtDesc(String registrationNumber);
+
+        @Query("""
+                        select v from VehicleSession v
+                        where v.registrationNumber = :reg
+                        and v.customerPhone = :phone
+                        and v.status != 'COMPLETED'
+                        order by v.createdAt desc
+                        """)
+        List<VehicleSession> findActiveByRegistrationAndPhone(@Param("reg") String reg, @Param("phone") String phone);
+
+        @Query("""
+                        select v from VehicleSession v
+                        where v.registrationNumber = :reg
+                        and lower(v.customer.email) = lower(:email)
+                        and v.status != 'COMPLETED'
+                        order by v.createdAt desc
+                        """)
+        List<VehicleSession> findActiveByRegistrationAndEmail(@Param("reg") String reg, @Param("email") String email);
+
+        @Query("""
+                        select v from VehicleSession v
+                        where v.branch.id = :branchId
+                        and v.registrationNumber = :reg
+                        and v.customerPhone = :phone
+                        and v.status != 'COMPLETED'
+                        order by v.createdAt desc
+                        """)
+        List<VehicleSession> findActiveDuplicateForBranch(
+                        @Param("branchId") Long branchId,
+                        @Param("reg") String reg,
+                        @Param("phone") String phone);
 
         @Query("""
                         select count(v)
@@ -32,6 +64,14 @@ public interface VehicleSessionRepository
                         order by v.createdAt desc
                         """)
         List<VehicleSession> findFiltered(@Param("branchId") Long branchId, @Param("status") SessionStatus status);
+
+        @Query("""
+                        select v
+                        from VehicleSession v
+                        where v.customer.id = :customerId
+                        order by v.createdAt desc
+                        """)
+        List<VehicleSession> findTop6ByCustomerIdOrderByCreatedAtDesc(@Param("customerId") Long customerId);
 
         @Query("""
                         select count(v)

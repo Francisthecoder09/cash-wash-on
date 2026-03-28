@@ -32,7 +32,7 @@ public class ReferenceController {
     }
 
     @GetMapping("/branches/{branchId}/staff")
-    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
     public List<SelectOptionDto> staff(@PathVariable Long branchId) {
         return referenceService.getStaff(branchId);
     }

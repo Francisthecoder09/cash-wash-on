@@ -16,6 +16,7 @@ const TabletLanePage = lazy(() => import('./pages/TabletLanePage').then((module)
 const CustomerPortalPage = lazy(() => import('./pages/CustomerPortalPage'));
 const CustomerLoginPage = lazy(() => import('./pages/CustomerLoginPage'));
 const BookingPage = lazy(() => import('./pages/BookingPage'));
+const BookingConfirmationPage = lazy(() => import('./pages/BookingConfirmationPage'));
 
 function RouteLoader() {
   return (
@@ -45,6 +46,7 @@ export default function App() {
             <Routes>
               <Route path="/portal/login" element={<CustomerLoginPage />} />
               <Route path="/portal/book" element={<BookingPage />} />
+              <Route path="/portal/confirmation/:token" element={<BookingConfirmationPage />} />
               <Route path="/portal/:token" element={<CustomerPortalPage />} />
               <Route path="/login" element={<LoginPage />} />
 
