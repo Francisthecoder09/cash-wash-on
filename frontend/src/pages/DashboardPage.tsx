@@ -21,6 +21,7 @@ const fadeUp = {
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [animatedValues, setAnimatedValues] = useState({ vehicles: 0, lanes: 0, delayed: 0 });
   const [branches, setBranches] = useState<SelectOption[]>([]);
   const auth = authStore.get();
@@ -45,25 +46,45 @@ export function DashboardPage() {
   }, [isAdmin, selectedBranchId]);
 
   useEffect(() => {
-    api.get<DashboardSummary>(dashboardQuery).then((summary) => {
-      setData(summary);
-      const duration = 1200;
-      const steps = 36;
-      let step = 0;
-      const timer = setInterval(() => {
-        step += 1;
-        const progress = 1 - Math.pow(1 - step / steps, 3);
-        setAnimatedValues({
-          vehicles: Math.round(summary.vehiclesToday * progress),
-          lanes: Math.round(summary.activeLanes * progress),
-          delayed: Math.round(summary.delayedSessions * progress),
-        });
-        if (step >= steps) {
-          clearInterval(timer);
-        }
-      }, duration / steps);
-    });
+    setLoadError(null);
+    setData(null);
+
+    api.get<DashboardSummary>(dashboardQuery)
+      .then((summary) => {
+        setData(summary);
+        const duration = 1200;
+        const steps = 36;
+        let step = 0;
+        const timer = setInterval(() => {
+          step += 1;
+          const progress = 1 - Math.pow(1 - step / steps, 3);
+          setAnimatedValues({
+            vehicles: Math.round(summary.vehiclesToday * progress),
+            lanes: Math.round(summary.activeLanes * progress),
+            delayed: Math.round(summary.delayedSessions * progress),
+          });
+          if (step >= steps) {
+            clearInterval(timer);
+          }
+        }, duration / steps);
+      })
+      .catch((error: Error) => {
+        setLoadError(error.message || 'Unable to load overview');
+      });
   }, [dashboardQuery]);
+
+  if (loadError) {
+    return (
+      <Paper sx={{ p: 4 }}>
+        <Stack spacing={1.5}>
+          <Typography variant="h5">Overview unavailable</Typography>
+          <Typography color="text.secondary">
+            {loadError}
+          </Typography>
+        </Stack>
+      </Paper>
+    );
+  }
 
   const vehicleSpark = data?.laneLeaderboard?.map((lane) => lane.averageMinutes) ?? [28, 36, 31, 44, 38, 52];
   const laneSpark = data?.monthlyRanking?.map((lane) => lane.combinedScore * 100) ?? [66, 72, 77, 83, 78, 86];

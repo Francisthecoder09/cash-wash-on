@@ -23,31 +23,31 @@ public class DashboardController {
     // READ — AUDITOR can view the dashboard summary
     @GetMapping("/summary")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
-    public DashboardSummaryResponse summary(@RequestParam Long branchId) {
+    public DashboardSummaryResponse summary(@RequestParam(required = false) Long branchId) {
         return dashboardService.getSummary(branchId);
     }
 
     @GetMapping("/revenue/today")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','AUDITOR')")
-    public BigDecimal getTodayRevenue(@RequestParam Long branchId) {
+    public BigDecimal getTodayRevenue(@RequestParam(required = false) Long branchId) {
         return dashboardService.getTodayRevenue(branchId);
     }
 
     @GetMapping("/active-sessions/count")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
-    public long getActiveSessionsCount(@RequestParam Long branchId) {
+    public long getActiveSessionsCount(@RequestParam(required = false) Long branchId) {
         return dashboardService.getActiveSessionsCount(branchId);
     }
 
     @GetMapping("/status-breakdown")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','AUDITOR')")
-    public Map<String, Long> getSessionStatusBreakdown(@RequestParam Long branchId) {
+    public Map<String, Long> getSessionStatusBreakdown(@RequestParam(required = false) Long branchId) {
         return dashboardService.getSessionStatusBreakdown(branchId);
     }
 
     @GetMapping("/services-breakdown")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','AUDITOR')")
-    public Map<String, Long> getPopularServicesBreakdown(@RequestParam Long branchId) {
+    public Map<String, Long> getPopularServicesBreakdown(@RequestParam(required = false) Long branchId) {
         return dashboardService.getPopularServicesBreakdown(branchId);
     }
 }

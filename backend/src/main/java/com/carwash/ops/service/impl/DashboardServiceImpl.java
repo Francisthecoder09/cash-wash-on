@@ -35,15 +35,15 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public DashboardSummaryResponse getSummary(Long branchId) {
-                if (branchId == null) {
-                        return new DashboardSummaryResponse(0L, 0L, 0L, List.of(), List.of());
-                }
-
                 // Pre-load sessions once to avoid repeated queries
                 var completedSessions = vehicleSessionRepository.findFiltered(branchId, SessionStatus.COMPLETED);
                 var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
 
-                List<LaneLeaderboardItem> leaderboard = laneRepository.findByBranch_IdOrderByDisplayOrderAsc(branchId)
+                var lanes = branchId == null
+                                ? laneRepository.findAll()
+                                : laneRepository.findByBranch_IdOrderByDisplayOrderAsc(branchId);
+
+                List<LaneLeaderboardItem> leaderboard = lanes
                                 .stream()
                                 .map(lane -> {
                                         var sessions = completedSessions.stream()
@@ -88,10 +88,11 @@ public class DashboardServiceImpl implements DashboardService {
                                 .toList();
 
                 LocalDate today = LocalDate.now(ZoneOffset.UTC);
-                long vehiclesToday = vehicleSessionRepository.countDailyCompleted(
-                                branchId,
-                                today.atStartOfDay().toInstant(ZoneOffset.UTC),
-                                today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));
+                Instant start = today.atStartOfDay().toInstant(ZoneOffset.UTC);
+                Instant end = today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+                long vehiclesToday = branchId == null
+                                ? vehicleSessionRepository.countByCompletedAtBetween(start, end)
+                                : vehicleSessionRepository.countDailyCompleted(branchId, start, end);
 
                 long delayedSessions = allSessions.stream()
                                 .filter(session -> session.getStatus() != SessionStatus.COMPLETED)
@@ -102,8 +103,7 @@ public class DashboardServiceImpl implements DashboardService {
 
                 return new DashboardSummaryResponse(
                                 vehiclesToday,
-                                laneRepository.findByBranch_IdOrderByDisplayOrderAsc(branchId).stream()
-                                                .filter(lane -> lane.isActive()).count(),
+                                lanes.stream().filter(lane -> lane.isActive()).count(),
                                 delayedSessions,
                                 leaderboard,
                                 ranking);
@@ -111,7 +111,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public BigDecimal getTodayRevenue(Long branchId) {
-                if (branchId == null) return BigDecimal.ZERO;
                 LocalDate today = LocalDate.now(ZoneOffset.UTC);
                 
                 var sessions = vehicleSessionRepository.findFiltered(branchId, SessionStatus.COMPLETED);
@@ -126,7 +125,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public long getActiveSessionsCount(Long branchId) {
-                if (branchId == null) return 0;
                 var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
                 return allSessions.stream()
                         .filter(s -> s.getStatus() != SessionStatus.COMPLETED)
@@ -135,7 +133,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public Map<String, Long> getSessionStatusBreakdown(Long branchId) {
-                if (branchId == null) return Map.of();
                 LocalDate today = LocalDate.now(ZoneOffset.UTC);
                 
                 var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
@@ -152,7 +149,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         @Override
         public Map<String, Long> getPopularServicesBreakdown(Long branchId) {
-                if (branchId == null) return Map.of();
                 LocalDate today = LocalDate.now(ZoneOffset.UTC);
                 
                 var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
