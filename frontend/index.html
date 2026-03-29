@@ -15,9 +15,13 @@
     if (typeof global === 'undefined') {
       window.global = window;
     }
-    const apiOrigin = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:8083'
-      : window.location.origin;
+    const configuredApiOrigin = '%VITE_API_URL%';
+    const hasConfiguredApiOrigin = configuredApiOrigin && !configuredApiOrigin.includes('VITE_API_URL');
+    const apiOrigin = hasConfiguredApiOrigin
+      ? configuredApiOrigin.replace(/\/api$/, '')
+      : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:8083'
+        : window.location.origin);
     window.__APP_CONFIG__ = {
       apiBaseUrl: apiOrigin + '/api',
       wsUrl: apiOrigin + '/ws'
