@@ -167,6 +167,7 @@ public class AdminServiceImpl implements AdminService {
 
         User user = new User();
         user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail().trim().toLowerCase());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole(RoleName.valueOf(request.getRole()));
         user.setBranch(branch);

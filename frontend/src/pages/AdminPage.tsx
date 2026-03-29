@@ -84,7 +84,7 @@ export function AdminPage() {
     // Form states
     const [branchForm, setBranchForm] = useState<CreateBranchRequest>({ name: '', location: '', timezone: 'Africa/Accra' });
     const [laneForm, setLaneForm] = useState<CreateLaneRequest>({ laneName: '', branchId: 0, displayOrder: 1 });
-    const [userForm, setUserForm] = useState<CreateUserRequest>({ username: '', password: '', role: 'CASHIER', branchId: 0, staffId: 0 });
+    const [userForm, setUserForm] = useState<CreateUserRequest>({ username: '', email: '', password: '', role: 'CASHIER', branchId: 0, staffId: 0 });
     const [staffForm, setStaffForm] = useState<CreateStaffRequest>({ fullName: '', employeeCode: '', phone: '', branchId: 0 });
 
     useEffect(() => {
@@ -263,8 +263,8 @@ export function AdminPage() {
     // User handlers
     const handleSaveUser = async () => {
         // Validate required fields - ensure staffId is not 0 (not selected)
-        if (!userForm.username || !userForm.password || !userForm.branchId || !userForm.role || userForm.staffId === 0) {
-            showSnackbar('Please fill in all required fields (including Staff Member)', 'error');
+        if (!userForm.username || !userForm.email || !userForm.password || !userForm.branchId || !userForm.role || userForm.staffId === 0) {
+            showSnackbar('Please fill in all required fields (including email and staff member)', 'error');
             return;
         }
         try {
@@ -319,7 +319,7 @@ export function AdminPage() {
         const branchList = branches.filter(b => b && b.id);
         const defaultBranchId = branchList.length > 0 ? branchList[0].id : 0;
         console.log('openUserDialog - branches:', branches, 'defaultBranchId:', defaultBranchId);
-        setUserForm({ username: '', password: '', role: 'CASHIER', branchId: defaultBranchId, staffId: 0 });
+        setUserForm({ username: '', email: '', password: '', role: 'CASHIER', branchId: defaultBranchId, staffId: 0 });
         if (defaultBranchId > 0) {
             loadStaff(defaultBranchId);
         } else {
@@ -880,6 +880,14 @@ export function AdminPage() {
                         label="Username"
                         value={userForm.username}
                         onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                        sx={{ mb: 2 }}
+                    />
+                    <TextField
+                        fullWidth
+                        label="Email"
+                        type="email"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                         sx={{ mb: 2 }}
                     />
                     <TextField

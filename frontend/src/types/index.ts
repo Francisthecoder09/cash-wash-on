@@ -233,6 +233,7 @@ export interface CreateLaneRequest {
 
 export interface CreateUserRequest {
   username: string;
+  email: string;
   password: string;
   role: Role;
   branchId: number;
