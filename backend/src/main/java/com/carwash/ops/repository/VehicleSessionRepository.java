@@ -21,7 +21,7 @@ public interface VehicleSessionRepository
                         select v from VehicleSession v
                         where v.registrationNumber = :reg
                         and v.customerPhone = :phone
-                        and v.status != 'COMPLETED'
+                        and v.status not in ('COMPLETED', 'EXPIRED')
                         order by v.createdAt desc
                         """)
         List<VehicleSession> findActiveByRegistrationAndPhone(@Param("reg") String reg, @Param("phone") String phone);
@@ -30,7 +30,7 @@ public interface VehicleSessionRepository
                         select v from VehicleSession v
                         where v.registrationNumber = :reg
                         and lower(v.customer.email) = lower(:email)
-                        and v.status != 'COMPLETED'
+                        and v.status not in ('COMPLETED', 'EXPIRED')
                         order by v.createdAt desc
                         """)
         List<VehicleSession> findActiveByRegistrationAndEmail(@Param("reg") String reg, @Param("email") String email);
@@ -40,7 +40,7 @@ public interface VehicleSessionRepository
                         where v.branch.id = :branchId
                         and v.registrationNumber = :reg
                         and v.customerPhone = :phone
-                        and v.status != 'COMPLETED'
+                        and v.status not in ('COMPLETED', 'EXPIRED')
                         order by v.createdAt desc
                         """)
         List<VehicleSession> findActiveDuplicateForBranch(
@@ -72,6 +72,24 @@ public interface VehicleSessionRepository
                         order by v.createdAt desc
                         """)
         List<VehicleSession> findTop6ByCustomerIdOrderByCreatedAtDesc(@Param("customerId") Long customerId);
+
+        @Query("""
+                        select v
+                        from VehicleSession v
+                        where v.customer.id = :customerId
+                        and v.status not in ('COMPLETED', 'EXPIRED')
+                        order by v.createdAt desc
+                        """)
+        List<VehicleSession> findActiveByCustomerId(@Param("customerId") Long customerId);
+
+        @Query("""
+                        select v
+                        from VehicleSession v
+                        where v.status = 'REGISTERED'
+                        and v.appointmentAt is not null
+                        and v.appointmentAt <= :cutoff
+                        """)
+        List<VehicleSession> findExpiredRegisteredSessions(@Param("cutoff") Instant cutoff);
 
         @Query("""
                         select count(v)

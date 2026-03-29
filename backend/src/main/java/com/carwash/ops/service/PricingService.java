@@ -12,6 +12,8 @@ public interface PricingService {
     ServiceTypeEntity updateServiceType(Long id, ServiceAdminDTO.UpdateServiceRequest request);
     void deleteServiceType(Long id);
     List<ServiceTypeEntity> getAllServiceTypes(boolean activeOnly);
+    List<ServiceTypeEntity> getServiceTypesByCategory(String category, boolean activeOnly);
+    List<ServiceTypeEntity> getServiceTypesByCategoryAndBranch(String category, Long branchId, boolean activeOnly);
     ServiceTypeEntity getServiceTypeById(Long id);
 
     // Pricing Operations

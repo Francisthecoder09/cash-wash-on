@@ -11,7 +11,9 @@ public record VehicleSessionResponse(
         String customerPhone,
         String customerEmail,
         String vehicleType,
+        String vehicleImageUrl,
         String servicePackage,
+        List<String> addOnServices,
         SessionStatus status,
         String delayReason,
         Double price,
@@ -32,8 +34,12 @@ public record VehicleSessionResponse(
         Instant completedAt,
         Instant createdAt,
         Instant updatedAt,
+        SessionPaymentResponse latestPayment,
+        List<SessionPaymentResponse> paymentHistory,
         CustomerProfileView customerProfile,
-        List<CustomerHistoryItem> recentSessions
+        List<CustomerHistoryItem> recentSessions,
+        List<SavedVehicleView> savedVehicles,
+        List<PortalNotificationItem> notifications
 ) {
     public record CustomerProfileView(
             Integer totalVisits,
@@ -46,13 +52,35 @@ public record VehicleSessionResponse(
     public record CustomerHistoryItem(
             Long sessionId,
             String registrationNumber,
+            String vehicleType,
             String servicePackage,
+            List<String> addOnServices,
+            String branchName,
             SessionStatus status,
             Double price,
             Boolean paid,
             Instant appointmentAt,
             Instant completedAt,
             Instant createdAt
+    ) {
+    }
+
+    public record SavedVehicleView(
+            String registrationNumber,
+            String vehicleType,
+            String preferredServicePackage,
+            List<String> preferredAddOnServices,
+            String lastBranchName,
+            Instant lastSeenAt,
+            Integer totalSessions
+    ) {
+    }
+
+    public record PortalNotificationItem(
+            String title,
+            String body,
+            String tone,
+            Instant occurredAt
     ) {
     }
 }

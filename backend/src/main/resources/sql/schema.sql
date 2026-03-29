@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS customers (
     full_name VARCHAR(120) NOT NULL,
     phone VARCHAR(30) NOT NULL UNIQUE,
     email VARCHAR(100),
+    username VARCHAR(60) UNIQUE,
+    pin_hash VARCHAR(255),
     total_visits INTEGER DEFAULT 0,
     loyalty_points INTEGER DEFAULT 0,
     last_vehicle_registration VARCHAR(25),
@@ -92,6 +94,7 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_customer_phone ON customers (phone);
+CREATE INDEX IF NOT EXISTS idx_customer_username ON customers (username);
 CREATE INDEX IF NOT EXISTS idx_customer_created_at ON customers (created_at);
 CREATE INDEX IF NOT EXISTS idx_customer_updated_at ON customers (updated_at);
 
@@ -118,7 +121,9 @@ CREATE TABLE IF NOT EXISTS vehicle_sessions (
     customer_name VARCHAR(120) NOT NULL,
     customer_phone VARCHAR(30),
     vehicle_type VARCHAR(50) NOT NULL,
+    vehicle_image_url LONGTEXT,
     service_package VARCHAR(80) NOT NULL,
+    add_on_services TEXT,
     status VARCHAR(30) NOT NULL,
     source_request_id VARCHAR(80) UNIQUE,
     registered_at TIMESTAMP NOT NULL,
@@ -199,6 +204,39 @@ CREATE INDEX IF NOT EXISTS idx_inspection_inspector_staff_id ON inspections (ins
 CREATE INDEX IF NOT EXISTS idx_inspection_created_at ON inspections (created_at);
 CREATE INDEX IF NOT EXISTS idx_inspection_updated_at ON inspections (updated_at);
 
+CREATE TABLE IF NOT EXISTS session_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    vehicle_session_id BIGINT NOT NULL,
+    sender_type VARCHAR(20) NOT NULL,
+    sender_name VARCHAR(120) NOT NULL,
+    message_body TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_session_id) REFERENCES vehicle_sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_messages_vehicle_session_id ON session_messages (vehicle_session_id);
+CREATE INDEX IF NOT EXISTS idx_session_messages_created_at ON session_messages (created_at);
+
+CREATE TABLE IF NOT EXISTS session_payments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    vehicle_session_id BIGINT NOT NULL,
+    processed_by_user_id BIGINT,
+    payment_method VARCHAR(30) NOT NULL,
+    payment_status VARCHAR(30) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    reference_number VARCHAR(120),
+    payment_notes VARCHAR(500),
+    paid_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_session_id) REFERENCES vehicle_sessions(id),
+    FOREIGN KEY (processed_by_user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_payments_vehicle_session_id ON session_payments (vehicle_session_id);
+CREATE INDEX IF NOT EXISTS idx_session_payments_paid_at ON session_payments (paid_at);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT,
@@ -222,6 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_updated_at ON audit_logs (updated_at);
 CREATE TABLE IF NOT EXISTS service_types (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     service_name VARCHAR(120) NOT NULL UNIQUE,
+    branch_id BIGINT,
     description VARCHAR(1000),
     base_price DECIMAL(10,2) NOT NULL,
     duration_minutes INTEGER NOT NULL,
@@ -230,10 +269,12 @@ CREATE TABLE IF NOT EXISTS service_types (
     image_url VARCHAR(255),
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_type_name ON service_types (service_name);
+CREATE INDEX IF NOT EXISTS idx_service_type_branch_id ON service_types (branch_id);
 
 CREATE TABLE IF NOT EXISTS pricing (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

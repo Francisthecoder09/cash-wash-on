@@ -15,9 +15,9 @@ interface MetricCardProps {
 }
 
 const trendConfig = {
-  up: { icon: <TrendingUp sx={{ fontSize: 16 }} />, color: '#66c28a', label: 'Improving' },
-  down: { icon: <TrendingDown sx={{ fontSize: 16 }} />, color: '#de6f5d', label: 'Watchlist' },
-  neutral: { icon: <TrendingFlat sx={{ fontSize: 16 }} />, color: '#9aa8b0', label: 'Holding' },
+  up: { icon: <TrendingUp sx={{ fontSize: 16 }} />, color: '#4f9b88', label: 'Improving' },
+  down: { icon: <TrendingDown sx={{ fontSize: 16 }} />, color: '#c8583d', label: 'Watchlist' },
+  neutral: { icon: <TrendingFlat sx={{ fontSize: 16 }} />, color: '#8f6f58', label: 'Holding' },
 };
 
 export function MetricCard({
@@ -25,7 +25,7 @@ export function MetricCard({
   value,
   subtitle,
   icon,
-  color = '#5fb7d4',
+  color = '#e36b2c',
   trend = 'neutral',
   sparkData,
   badge,
@@ -40,14 +40,13 @@ export function MetricCard({
       whileHover={{ y: -2 }}
       transition={{ type: 'spring', stiffness: 260, damping: 24 }}
       sx={{
-        p: 2.25,
+        p: 2,
         position: 'relative',
         overflow: 'hidden',
-        borderRadius: 4,
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.08))',
-        border: `1px solid ${alpha(color, 0.26)}`,
-        boxShadow: '0 18px 38px rgba(3,10,18,0.2), inset 0 1px 0 rgba(255,255,255,0.14)',
-        backdropFilter: 'blur(24px)',
+        borderRadius: 3,
+        background: 'linear-gradient(180deg, rgba(255,247,240,0.08), rgba(255,247,240,0.04))',
+        border: `1px solid ${alpha(color, 0.18)}`,
+        boxShadow: '0 14px 30px rgba(0,0,0,0.22)',
       }}
     >
       <Box
@@ -57,7 +56,7 @@ export function MetricCard({
           top: 0,
           bottom: 0,
           width: 4,
-          background: `linear-gradient(180deg, ${alpha(color, 0.95)}, ${alpha('#ffffff', 0.55)})`,
+          background: `linear-gradient(180deg, ${alpha(color, 0.92)}, ${alpha('#f3d7c5', 0.55)})`,
         }}
       />
 
@@ -67,21 +66,21 @@ export function MetricCard({
             sx={{
               width: 44,
               height: 44,
-              borderRadius: 2.5,
+              borderRadius: 2,
               display: 'grid',
               placeItems: 'center',
               color,
-              background: alpha('#ffffff', 0.12),
+              background: alpha(color, 0.08),
               border: `1px solid ${alpha(color, 0.26)}`,
             }}
           >
             {icon}
           </Box>
           <Box>
-            <Typography variant="caption" sx={{ color: 'rgba(222,235,245,0.82)', fontFamily: '"IBM Plex Mono", monospace' }}>
+            <Typography variant="caption" sx={{ color: 'rgba(228,206,190,0.72)' }}>
               {title}
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#f4f9fd', fontWeight: 700, fontSize: { xs: '1.9rem', md: '2.35rem' }, lineHeight: 1 }}>
+            <Typography sx={{ mt: 0.5, color: '#f5ede5', fontWeight: 700, fontSize: { xs: '1.6rem', md: '1.95rem' }, lineHeight: 1 }}>
               {value}
             </Typography>
           </Box>
@@ -99,12 +98,12 @@ export function MetricCard({
       </Stack>
 
       {subtitle && (
-        <Typography sx={{ mt: 1.5, color: 'rgba(217,230,240,0.84)', maxWidth: 280 }}>
+        <Typography sx={{ mt: 1.2, color: 'rgba(228,206,190,0.76)', maxWidth: 280, fontSize: '0.9rem' }}>
           {subtitle}
         </Typography>
       )}
 
-      <Box sx={{ mt: 2.2, height: 62 }}>
+      <Box sx={{ mt: 1.8, height: 56 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
             <defs>

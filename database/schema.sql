@@ -59,17 +59,39 @@ CREATE INDEX IF NOT EXISTS idx_user_staff_id ON users (staff_id);
 CREATE INDEX IF NOT EXISTS idx_user_created_at ON users (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_updated_at ON users (updated_at);
 
+CREATE TABLE IF NOT EXISTS customers (
+    id BIGSERIAL PRIMARY KEY,
+    full_name VARCHAR(120) NOT NULL,
+    phone VARCHAR(30) NOT NULL UNIQUE,
+    email VARCHAR(100),
+    username VARCHAR(60) UNIQUE,
+    pin_hash VARCHAR(255),
+    total_visits INTEGER DEFAULT 0,
+    loyalty_points INTEGER DEFAULT 0,
+    last_vehicle_registration VARCHAR(25),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_phone ON customers (phone);
+CREATE INDEX IF NOT EXISTS idx_customer_username ON customers (username);
+CREATE INDEX IF NOT EXISTS idx_customer_created_at ON customers (created_at);
+CREATE INDEX IF NOT EXISTS idx_customer_updated_at ON customers (updated_at);
+
 CREATE TABLE IF NOT EXISTS vehicle_sessions (
     id BIGSERIAL PRIMARY KEY,
     branch_id BIGINT NOT NULL REFERENCES branches(id),
     lane_id BIGINT REFERENCES lanes(id),
     cashier_user_id BIGINT NOT NULL REFERENCES users(id),
     operator_staff_id BIGINT REFERENCES staff(id),
+    customer_id BIGINT REFERENCES customers(id),
     registration_number VARCHAR(25) NOT NULL,
     customer_name VARCHAR(120) NOT NULL,
     customer_phone VARCHAR(30),
     vehicle_type VARCHAR(50) NOT NULL,
+    vehicle_image_url TEXT,
     service_package VARCHAR(80) NOT NULL,
+    add_on_services TEXT,
     status VARCHAR(30) NOT NULL,
     source_request_id VARCHAR(80) UNIQUE,
     registered_at TIMESTAMPTZ NOT NULL,
@@ -77,6 +99,10 @@ CREATE TABLE IF NOT EXISTS vehicle_sessions (
     interior_started_at TIMESTAMPTZ,
     inspection_started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
+    portal_token VARCHAR(100) UNIQUE,
+    appointment_at TIMESTAMPTZ,
+    price DECIMAL(10,2) DEFAULT 0.0,
+    is_paid BOOLEAN DEFAULT FALSE,
     delay_reason VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -87,6 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_vehicle_session_branch_id ON vehicle_sessions (br
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_lane_id ON vehicle_sessions (lane_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_cashier_user_id ON vehicle_sessions (cashier_user_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_operator_staff_id ON vehicle_sessions (operator_staff_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_session_customer_id ON vehicle_sessions (customer_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_created_at ON vehicle_sessions (created_at);
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_updated_at ON vehicle_sessions (updated_at);
 CREATE INDEX IF NOT EXISTS idx_vehicle_session_registered_at ON vehicle_sessions (registered_at);

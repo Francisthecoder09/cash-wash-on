@@ -72,7 +72,8 @@ export const customerApi = {
 };
 
 export const sessionApi = {
-    pay: (id: number) => api.post<any>(`/sessions/${id}/pay`),
+    pay: (id: number, data: any) => api.post<any>(`/sessions/${id}/pay`, data),
+    getPayments: (id: number) => api.get<any[]>(`/sessions/${id}/payments`),
 };
 
 

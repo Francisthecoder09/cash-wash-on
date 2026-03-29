@@ -2,8 +2,10 @@ package com.carwash.ops.service.impl;
 
 import com.carwash.ops.domain.entity.PricingEntity;
 import com.carwash.ops.domain.entity.ServiceTypeEntity;
+import com.carwash.ops.domain.entity.Branch;
 import com.carwash.ops.dto.admin.ServiceAdminDTO;
 import com.carwash.ops.common.ApiException;
+import com.carwash.ops.repository.BranchRepository;
 import com.carwash.ops.repository.PricingEntityRepository;
 import com.carwash.ops.repository.ServiceTypeEntityRepository;
 import com.carwash.ops.service.PricingService;
@@ -20,6 +22,7 @@ public class PricingServiceImpl implements PricingService {
 
     private final ServiceTypeEntityRepository serviceTypeRepository;
     private final PricingEntityRepository pricingRepository;
+    private final BranchRepository branchRepository;
 
     @Override
     @Transactional
@@ -35,6 +38,7 @@ public class PricingServiceImpl implements PricingService {
                 .durationMinutes(request.getDurationMinutes())
                 .category(request.getCategory())
                 .isFeatured(request.getIsFeatured() != null ? request.getIsFeatured() : false)
+                .branch(resolveBranch(request.getBranchId()))
                 .active(true)
                 .build();
 
@@ -51,6 +55,7 @@ public class PricingServiceImpl implements PricingService {
         serviceType.setBasePrice(request.getBasePrice());
         serviceType.setDurationMinutes(request.getDurationMinutes());
         serviceType.setCategory(request.getCategory());
+        serviceType.setBranch(resolveBranch(request.getBranchId()));
 
         return serviceTypeRepository.save(serviceType);
     }
@@ -70,6 +75,23 @@ public class PricingServiceImpl implements PricingService {
             return serviceTypeRepository.findByActiveTrue();
         }
         return serviceTypeRepository.findAll();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceTypeEntity> getServiceTypesByCategory(String category, boolean activeOnly) {
+        return getAllServiceTypes(activeOnly).stream()
+                .filter(service -> service.getCategory() != null)
+                .filter(service -> service.getCategory().equalsIgnoreCase(category))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceTypeEntity> getServiceTypesByCategoryAndBranch(String category, Long branchId, boolean activeOnly) {
+        return getServiceTypesByCategory(category, activeOnly).stream()
+                .filter(service -> service.getBranch() == null || (branchId != null && service.getBranch().getId().equals(branchId)))
+                .toList();
     }
 
     @Override
@@ -131,5 +153,13 @@ public class PricingServiceImpl implements PricingService {
             return pricingRepository.findByActiveTrue();
         }
         return pricingRepository.findAll();
+    }
+
+    private Branch resolveBranch(Long branchId) {
+        if (branchId == null) {
+            return null;
+        }
+        return branchRepository.findById(branchId)
+                .orElseThrow(() -> ApiException.notFound("Branch not found with id: " + branchId));
     }
 }

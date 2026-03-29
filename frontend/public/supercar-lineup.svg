@@ -1,0 +1,40 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" fill="#0A0E13"/>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <ellipse cx="420" cy="720" rx="290" ry="58" fill="#0E141B"/>
+  <ellipse cx="1160" cy="715" rx="315" ry="62" fill="#0E141B"/>
+  <path d="M158 622C198 546 272 492 392 487H536C621 492 688 535 748 622L708 626C678 611 646 604 612 604H293C256 604 223 611 194 626L158 622Z" fill="#C4122F"/>
+  <path d="M217 622H699L676 681C668 704 648 720 625 720H290C266 720 245 705 238 681L217 622Z" fill="#8E1022"/>
+  <path d="M285 491H542C584 493 621 513 656 552H235C256 516 290 494 285 491Z" fill="#F0F5FA"/>
+  <path d="M280 503H533C567 505 596 518 624 542H248C259 521 278 506 280 503Z" fill="#10161D"/>
+  <path d="M336 561H482C507 561 518 585 496 593H318C297 593 306 561 336 561Z" fill="#CFE8FF"/>
+  <ellipse cx="312" cy="710" rx="78" ry="78" fill="#11181F"/>
+  <ellipse cx="312" cy="710" rx="45" ry="45" fill="#D7DEE6"/>
+  <ellipse cx="312" cy="710" rx="21" ry="21" fill="#616A73"/>
+  <ellipse cx="601" cy="710" rx="78" ry="78" fill="#11181F"/>
+  <ellipse cx="601" cy="710" rx="45" ry="45" fill="#D7DEE6"/>
+  <ellipse cx="601" cy="710" rx="21" ry="21" fill="#616A73"/>
+  <path d="M864 627C915 540 998 487 1138 480H1315C1413 485 1492 542 1552 627L1500 632C1465 616 1433 608 1391 608H1046C1003 608 965 616 928 632L864 627Z" fill="#F6C223"/>
+  <path d="M938 626H1487L1459 688C1450 712 1428 728 1402 728H1015C988 728 965 711 956 688L938 626Z" fill="#A97D04"/>
+  <path d="M1026 486H1312C1361 489 1407 516 1450 564H962C984 520 1018 490 1026 486Z" fill="#171D24"/>
+  <path d="M1044 500H1291C1334 502 1371 521 1403 553H998C1013 523 1040 503 1044 500Z" fill="#EFF3F8"/>
+  <path d="M1084 563H1275C1306 563 1319 589 1292 597H1061C1036 597 1051 563 1084 563Z" fill="#B9D7E7"/>
+  <ellipse cx="1048" cy="717" rx="83" ry="83" fill="#11181F"/>
+  <ellipse cx="1048" cy="717" rx="48" ry="48" fill="#D7DEE6"/>
+  <ellipse cx="1048" cy="717" rx="22" ry="22" fill="#616A73"/>
+  <ellipse cx="1379" cy="717" rx="83" ry="83" fill="#11181F"/>
+  <ellipse cx="1379" cy="717" rx="48" ry="48" fill="#D7DEE6"/>
+  <ellipse cx="1379" cy="717" rx="22" ry="22" fill="#616A73"/>
+  <path d="M0 768H1600V900H0V768Z" fill="url(#floor)"/>
+  <defs>
+    <linearGradient id="bg" x1="800" y1="0" x2="800" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10161D"/>
+      <stop offset="0.55" stop-color="#0E1319"/>
+      <stop offset="1" stop-color="#080C11"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="800" y1="768" x2="800" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#121A22"/>
+      <stop offset="1" stop-color="#06090D"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -96,6 +96,7 @@ public class DashboardServiceImpl implements DashboardService {
 
                 long delayedSessions = allSessions.stream()
                                 .filter(session -> session.getStatus() != SessionStatus.COMPLETED)
+                                .filter(session -> session.getStatus() != SessionStatus.EXPIRED)
                                 .filter(session -> session.getRegisteredAt() != null
                                                 && Duration.between(session.getRegisteredAt(), Instant.now())
                                                                 .toMinutes() > 45)
@@ -128,6 +129,7 @@ public class DashboardServiceImpl implements DashboardService {
                 var allSessions = vehicleSessionRepository.findFiltered(branchId, null);
                 return allSessions.stream()
                         .filter(s -> s.getStatus() != SessionStatus.COMPLETED)
+                        .filter(s -> s.getStatus() != SessionStatus.EXPIRED)
                         .count();
         }
 
@@ -140,7 +142,7 @@ public class DashboardServiceImpl implements DashboardService {
                 return allSessions.stream()
                         .filter(s -> s.getRegisteredAt() != null)
                         .filter(s -> LocalDate.ofInstant(s.getRegisteredAt(), ZoneOffset.UTC).equals(today) || 
-                                     (s.getStatus() != SessionStatus.COMPLETED))
+                                     (s.getStatus() != SessionStatus.COMPLETED && s.getStatus() != SessionStatus.EXPIRED))
                         .collect(Collectors.groupingBy(
                                 s -> s.getStatus() != null ? s.getStatus().name() : "UNKNOWN",
                                 Collectors.counting()

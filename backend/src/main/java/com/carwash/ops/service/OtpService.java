@@ -1,5 +1,7 @@
 package com.carwash.ops.service;
 
+import java.util.Optional;
+
 public interface OtpService {
     
     /**
@@ -13,4 +15,6 @@ public interface OtpService {
      * Marks it as used if successful.
      */
     boolean verifyOtp(String email, String code);
+
+    Optional<String> getLatestMockOtp(String email);
 }

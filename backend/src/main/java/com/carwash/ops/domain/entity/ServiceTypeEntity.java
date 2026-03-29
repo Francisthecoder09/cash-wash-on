@@ -36,6 +36,10 @@ public class ServiceTypeEntity extends BaseEntity {
     @Column(name = "image_url")
     private String imageUrl;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "branch_id")
+    private Branch branch;
+
     public ServiceTypeEntity() {}
 
     public String getServiceName() { return serviceName; }
@@ -54,6 +58,8 @@ public class ServiceTypeEntity extends BaseEntity {
     public void setIsFeatured(Boolean isFeatured) { this.isFeatured = isFeatured; }
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public Branch getBranch() { return branch; }
+    public void setBranch(Branch branch) { this.branch = branch; }
 
     public static ServiceTypeEntityBuilder builder() { return new ServiceTypeEntityBuilder(); }
     public static class ServiceTypeEntityBuilder {
@@ -65,6 +71,7 @@ public class ServiceTypeEntity extends BaseEntity {
         private Boolean isFeatured;
         private Boolean active;
         private String imageUrl;
+        private Branch branch;
         public ServiceTypeEntityBuilder serviceName(String serviceName) { this.serviceName = serviceName; return this; }
         public ServiceTypeEntityBuilder description(String description) { this.description = description; return this; }
         public ServiceTypeEntityBuilder basePrice(BigDecimal basePrice) { this.basePrice = basePrice; return this; }
@@ -73,6 +80,7 @@ public class ServiceTypeEntity extends BaseEntity {
         public ServiceTypeEntityBuilder isFeatured(Boolean isFeatured) { this.isFeatured = isFeatured; return this; }
         public ServiceTypeEntityBuilder active(Boolean active) { this.active = active; return this; }
         public ServiceTypeEntityBuilder imageUrl(String imageUrl) { this.imageUrl = imageUrl; return this; }
+        public ServiceTypeEntityBuilder branch(Branch branch) { this.branch = branch; return this; }
         public ServiceTypeEntity build() {
             ServiceTypeEntity s = new ServiceTypeEntity();
             s.setServiceName(serviceName);
@@ -83,6 +91,7 @@ public class ServiceTypeEntity extends BaseEntity {
             s.setIsFeatured(isFeatured != null ? isFeatured : false);
             s.setActive(active != null ? active : true);
             s.setImageUrl(imageUrl);
+            s.setBranch(branch);
             return s;
         }
     }

@@ -1,6 +1,6 @@
 export type Role = 'ADMIN' | 'BRANCH_MANAGER' | 'CASHIER' | 'LANE_OPERATOR' | 'INSPECTOR' | 'AUDITOR';
 
-export type SessionStatus = 'REGISTERED' | 'WASHING' | 'INTERIOR' | 'INSPECTION' | 'COMPLETED';
+export type SessionStatus = 'REGISTERED' | 'EXPIRED' | 'WASHING' | 'INTERIOR' | 'INSPECTION' | 'COMPLETED';
 
 export interface AuthResponse {
   token: string;
@@ -23,7 +23,9 @@ export interface VehicleSession {
   customerPhone?: string;
   customerEmail?: string;
   vehicleType: string;
+  vehicleImageUrl?: string;
   servicePackage: string;
+  addOnServices?: string[];
   status: SessionStatus;
   delayReason?: string;
   price?: number;
@@ -44,6 +46,8 @@ export interface VehicleSession {
   completedAt?: string;
   createdAt: string;
   updatedAt: string;
+  latestPayment?: SessionPaymentRecord;
+  paymentHistory?: SessionPaymentRecord[];
   customerProfile?: {
     totalVisits: number;
     loyaltyPoints: number;
@@ -53,7 +57,10 @@ export interface VehicleSession {
   recentSessions?: {
     sessionId: number;
     registrationNumber: string;
+    vehicleType?: string;
     servicePackage: string;
+    addOnServices?: string[];
+    branchName?: string;
     status: SessionStatus;
     price?: number;
     paid?: boolean;
@@ -61,6 +68,52 @@ export interface VehicleSession {
     completedAt?: string;
     createdAt: string;
   }[];
+  savedVehicles?: {
+    registrationNumber: string;
+    vehicleType?: string;
+    preferredServicePackage?: string;
+    preferredAddOnServices?: string[];
+    lastBranchName?: string;
+    lastSeenAt?: string;
+    totalSessions: number;
+  }[];
+  notifications?: {
+    title: string;
+    body: string;
+    tone: string;
+    occurredAt?: string;
+  }[];
+}
+
+export interface SessionMessage {
+  id: number;
+  sessionId: number;
+  senderType: 'CUSTOMER' | 'STAFF';
+  senderName: string;
+  message: string;
+  createdAt: string;
+}
+
+export type PaymentMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER';
+export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+
+export interface SessionPaymentRecord {
+  id: number;
+  sessionId: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  amount: number;
+  referenceNumber?: string;
+  paymentNotes?: string;
+  processedByUserId?: number;
+  processedByName?: string;
+  paidAt: string;
+  createdAt: string;
+}
+
+export interface SessionMessageEvent {
+  sessionId: number;
+  message: SessionMessage;
 }
 
 export interface DashboardSummary {
@@ -157,11 +210,11 @@ export interface Staff {
 
 export interface User {
   id: number;
-  email: string;
+  username: string;
   role: Role;
   branchId: number;
   branchName?: string;
-  staffId: number;
+  staffId?: number;
   staffName?: string;
   active: boolean;
 }
@@ -179,8 +232,8 @@ export interface CreateLaneRequest {
 }
 
 export interface CreateUserRequest {
-  email: string;
-  pin: string;
+  username: string;
+  password: string;
   role: Role;
   branchId: number;
   staffId: number;
@@ -231,6 +284,8 @@ export interface ServiceType {
   category: string;
   isFeatured: boolean;
   active: boolean;
+  branchId?: number;
+  branchName?: string;
 }
 
 export interface Pricing {
@@ -253,4 +308,86 @@ export interface Customer {
   lastVehicleRegistration?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CustomerAccount {
+  id: number;
+  fullName: string;
+  username: string;
+  phone?: string;
+  email: string;
+  totalVisits: number;
+  loyaltyPoints: number;
+  activePortalToken?: string | null;
+}
+
+export interface CustomerDashboard {
+  id: number;
+  fullName: string;
+  username: string;
+  phone?: string;
+  email?: string;
+  totalVisits: number;
+  loyaltyPoints: number;
+  loyaltyTier: string;
+  activeSession?: {
+    sessionId: number;
+    portalToken?: string;
+    registrationNumber: string;
+    vehicleType?: string;
+    servicePackage: string;
+    addOnServices?: string[];
+    branchName?: string;
+    status: SessionStatus;
+    price?: number;
+    paid?: boolean;
+    appointmentAt?: string;
+    registeredAt?: string;
+    updatedAt?: string;
+  } | null;
+  upcomingSession?: {
+    sessionId: number;
+    portalToken?: string;
+    registrationNumber: string;
+    vehicleType?: string;
+    servicePackage: string;
+    addOnServices?: string[];
+    branchName?: string;
+    status: SessionStatus;
+    price?: number;
+    paid?: boolean;
+    appointmentAt?: string;
+    registeredAt?: string;
+    updatedAt?: string;
+  } | null;
+  savedVehicles: {
+    registrationNumber: string;
+    vehicleType?: string;
+    preferredServicePackage?: string;
+    preferredAddOnServices?: string[];
+    lastBranchName?: string;
+    lastSeenAt?: string;
+    totalSessions: number;
+  }[];
+  recentSessions: {
+    sessionId: number;
+    portalToken?: string;
+    registrationNumber: string;
+    vehicleType?: string;
+    servicePackage: string;
+    addOnServices?: string[];
+    branchName?: string;
+    status: SessionStatus;
+    price?: number;
+    paid?: boolean;
+    appointmentAt?: string;
+    completedAt?: string;
+    createdAt: string;
+  }[];
+  notifications: {
+    title: string;
+    body: string;
+    tone: string;
+    occurredAt?: string;
+  }[];
 }

@@ -121,17 +121,17 @@ export function DashboardPage() {
           <Grid2 size={{ xs: 12, xl: 7 }}>
             <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', overflow: 'hidden', position: 'relative' }}>
               <Stack spacing={2.25} sx={{ position: 'relative', zIndex: 1 }}>
-                <Chip label="Operations Overview" sx={{ width: 'fit-content', bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
+                <Chip label="Operations Overview" sx={{ width: 'fit-content', bgcolor: 'rgba(227,107,44,0.14)', color: '#f5cb7f' }} />
                 <Typography variant="h2" sx={{ maxWidth: 760, color: '#eef2f4', lineHeight: 1.04 }}>
-                  Branch performance laid out like a control room, not a marketing screen
+                  Car wash performance framed for a dark, high-focus operations floor
                 </Typography>
-                <Typography sx={{ maxWidth: 640, color: 'rgba(154,168,176,0.86)', fontSize: '1.02rem' }}>
-                  Track throughput, lane pressure, and delays in a calmer industrial layout designed for real daily use. The graphics are now there to support decisions, not compete with them.
+                <Typography sx={{ maxWidth: 640, color: 'rgba(228,206,190,0.76)', fontSize: '1.02rem' }}>
+                  Track throughput, lane pressure, and delays in a darker layout that reads faster under real operational use.
                 </Typography>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} useFlexGap flexWrap="wrap">
-                  <Chip label={`${data.vehiclesToday} vehicles completed today`} sx={{ bgcolor: 'rgba(102,194,138,0.12)', color: '#8fd7a7' }} />
-                  <Chip label={`${data.activeLanes} lanes running`} sx={{ bgcolor: 'rgba(95,183,212,0.12)', color: '#8fd0e6' }} />
-                  <Chip label={`${data.delayedSessions} sessions at risk`} sx={{ bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
+                  <Chip label={`${data.vehiclesToday} vehicles completed today`} sx={{ bgcolor: 'rgba(79,155,136,0.1)', color: '#3f796b' }} />
+                  <Chip label={`${data.activeLanes} lanes running`} sx={{ bgcolor: 'rgba(143,111,88,0.14)', color: '#d0b5a1' }} />
+                  <Chip label={`${data.delayedSessions} sessions at risk`} sx={{ bgcolor: 'rgba(227,107,44,0.14)', color: '#f5cb7f' }} />
                 </Stack>
                 <Box sx={{ maxWidth: 430, pt: 1 }}>
                   <TextField
@@ -198,7 +198,7 @@ export function DashboardPage() {
       <Grid2 container spacing={3}>
         <Grid2 size={{ xs: 12, lg: 7 }}>
           <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible">
-            <Paper sx={{ p: 3, height: 320 }}>
+              <Paper sx={{ p: 3, height: 320, background: 'linear-gradient(180deg, rgba(255,247,240,0.07), rgba(255,247,240,0.04))' }}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
                 <Box sx={{ width: 42, height: 42, borderRadius: 2.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(95,183,212,0.12)', color: '#5fb7d4' }}>
                   <TrendingUp />
@@ -237,7 +237,7 @@ export function DashboardPage() {
 
         <Grid2 size={{ xs: 12, lg: 5 }}>
           <motion.div custom={6} variants={fadeUp} initial="hidden" animate="visible">
-            <Paper sx={{ p: 3, height: 320 }}>
+              <Paper sx={{ p: 3, height: 320, background: 'linear-gradient(180deg, rgba(255,247,240,0.07), rgba(255,247,240,0.04))' }}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
                 <Box sx={{ width: 42, height: 42, borderRadius: 2.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(240,180,76,0.12)', color: '#f0b44c' }}>
                   <EmojiEvents />

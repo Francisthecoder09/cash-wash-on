@@ -106,6 +106,8 @@ public class ServiceAdminController {
                 .isFeatured(entity.getIsFeatured())
                 .active(entity.isActive())
                 .imageUrl(entity.getImageUrl())
+                .branchId(entity.getBranch() != null ? entity.getBranch().getId() : null)
+                .branchName(entity.getBranch() != null ? entity.getBranch().getName() : null)
                 .build();
     }
 

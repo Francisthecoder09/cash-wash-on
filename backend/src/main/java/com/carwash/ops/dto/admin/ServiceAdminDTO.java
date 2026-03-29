@@ -16,11 +16,13 @@ public class ServiceAdminDTO {
         private Boolean isFeatured;
         private Boolean active;
         private String imageUrl;
+        private Long branchId;
+        private String branchName;
 
         public ServiceTypeResponse() {}
 
         public ServiceTypeResponse(Long id, String serviceName, String description, BigDecimal basePrice, 
-                                 Integer durationMinutes, String category, Boolean isFeatured, Boolean active, String imageUrl) {
+                                 Integer durationMinutes, String category, Boolean isFeatured, Boolean active, String imageUrl, Long branchId, String branchName) {
             this.id = id;
             this.serviceName = serviceName;
             this.description = description;
@@ -30,6 +32,8 @@ public class ServiceAdminDTO {
             this.isFeatured = isFeatured;
             this.active = active;
             this.imageUrl = imageUrl;
+            this.branchId = branchId;
+            this.branchName = branchName;
         }
 
         public Long getId() { return id; }
@@ -50,6 +54,10 @@ public class ServiceAdminDTO {
         public void setActive(Boolean active) { this.active = active; }
         public String getImageUrl() { return imageUrl; }
         public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+        public Long getBranchId() { return branchId; }
+        public void setBranchId(Long branchId) { this.branchId = branchId; }
+        public String getBranchName() { return branchName; }
+        public void setBranchName(String branchName) { this.branchName = branchName; }
 
         public static ServiceTypeResponseBuilder builder() { return new ServiceTypeResponseBuilder(); }
         public static class ServiceTypeResponseBuilder {
@@ -62,6 +70,8 @@ public class ServiceAdminDTO {
             private Boolean isFeatured;
             private Boolean active;
             private String imageUrl;
+            private Long branchId;
+            private String branchName;
             public ServiceTypeResponseBuilder id(Long id) { this.id = id; return this; }
             public ServiceTypeResponseBuilder serviceName(String serviceName) { this.serviceName = serviceName; return this; }
             public ServiceTypeResponseBuilder description(String description) { this.description = description; return this; }
@@ -71,7 +81,9 @@ public class ServiceAdminDTO {
             public ServiceTypeResponseBuilder isFeatured(Boolean isFeatured) { this.isFeatured = isFeatured; return this; }
             public ServiceTypeResponseBuilder active(Boolean active) { this.active = active; return this; }
             public ServiceTypeResponseBuilder imageUrl(String imageUrl) { this.imageUrl = imageUrl; return this; }
-            public ServiceTypeResponse build() { return new ServiceTypeResponse(id, serviceName, description, basePrice, durationMinutes, category, isFeatured, active, imageUrl); }
+            public ServiceTypeResponseBuilder branchId(Long branchId) { this.branchId = branchId; return this; }
+            public ServiceTypeResponseBuilder branchName(String branchName) { this.branchName = branchName; return this; }
+            public ServiceTypeResponse build() { return new ServiceTypeResponse(id, serviceName, description, basePrice, durationMinutes, category, isFeatured, active, imageUrl, branchId, branchName); }
         }
     }
 
@@ -82,6 +94,7 @@ public class ServiceAdminDTO {
         private Integer durationMinutes;
         private String category;
         private Boolean isFeatured;
+        private Long branchId;
 
         public CreateServiceRequest() {}
 
@@ -97,6 +110,8 @@ public class ServiceAdminDTO {
         public void setCategory(String category) { this.category = category; }
         public Boolean getIsFeatured() { return isFeatured; }
         public void setIsFeatured(Boolean isFeatured) { this.isFeatured = isFeatured; }
+        public Long getBranchId() { return branchId; }
+        public void setBranchId(Long branchId) { this.branchId = branchId; }
     }
 
     public static class UpdateServiceRequest {
@@ -105,6 +120,7 @@ public class ServiceAdminDTO {
         private BigDecimal basePrice;
         private Integer durationMinutes;
         private String category;
+        private Long branchId;
 
         public UpdateServiceRequest() {}
 
@@ -118,6 +134,8 @@ public class ServiceAdminDTO {
         public void setDurationMinutes(Integer durationMinutes) { this.durationMinutes = durationMinutes; }
         public String getCategory() { return category; }
         public void setCategory(String category) { this.category = category; }
+        public Long getBranchId() { return branchId; }
+        public void setBranchId(Long branchId) { this.branchId = branchId; }
     }
 
     public static class PricingResponse {

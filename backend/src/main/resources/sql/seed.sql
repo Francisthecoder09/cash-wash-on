@@ -69,7 +69,11 @@ INSERT INTO service_types (id, service_name, description, base_price, duration_m
 (1, 'Basic Wash', 'Exterior wash and dry', 10.00, 20, 'WASH', TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (2, 'Premium Wash', 'Basic wash + wax and tire shine', 20.00, 35, 'WASH', TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (3, 'Interior Detail', 'Deep cleaning of seats and carpet', 45.00, 60, 'INTERIOR', FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(4, 'Full Executive', 'Premium wash + Interior detail', 60.00, 90, 'WASH', TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+(4, 'Full Executive', 'Premium wash + Interior detail', 60.00, 90, 'WASH', TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 'Interior Detailing', 'Seats, dash, and high-touch cabin finishing', 12.00, 15, 'ADDON', FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(6, 'Rim Cleaning', 'Extra attention on wheel faces and brake dust', 8.00, 10, 'ADDON', FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(7, 'Tire Shine', 'Finishing gloss for a cleaner handoff look', 6.00, 8, 'ADDON', TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(8, 'Dashboard Wipe-down', 'Quick interior reset for dash and front trim', 5.00, 8, 'ADDON', FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT INTO pricing (id, service_type_id, vehicle_category, price, discount_percentage, active, created_at, updated_at) VALUES
 (1, 1, 'SEDAN', 10.00, 0, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

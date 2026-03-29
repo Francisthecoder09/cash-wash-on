@@ -17,6 +17,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -66,6 +67,18 @@ public class OtpServiceImpl implements OtpService {
         }
         
         return false;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> getLatestMockOtp(String email) {
+        if (!mockEnabled || email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
+        return otpRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail)
+                .map(CustomerOtpEntity::getOtpCode);
     }
 
     private String generate4DigitCode() {

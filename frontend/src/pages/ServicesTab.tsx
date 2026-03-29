@@ -27,8 +27,9 @@ import {
     FormControlLabel
 } from '@mui/material';
 import { Add, Delete, Edit, Settings } from '@mui/icons-material';
-import { servicesApi } from '../api/admin';
-import { ServiceType, Pricing } from '../types';
+import { branchApi, servicesApi } from '../api/admin';
+import { Branch, ServiceType, Pricing } from '../types';
+import { formatCurrency } from '../utils/currency';
 
 interface Props {
     showSnackbar: (message: string, severity: 'success' | 'error') => void;
@@ -36,6 +37,7 @@ interface Props {
 
 export function ServicesTab({ showSnackbar }: Props) {
     const [services, setServices] = useState<ServiceType[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
     const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
     const [pricing, setPricing] = useState<Pricing[]>([]);
     const [loading, setLoading] = useState(false);
@@ -62,6 +64,7 @@ export function ServicesTab({ showSnackbar }: Props) {
 
     useEffect(() => {
         loadServices();
+        branchApi.getAll().then(setBranches).catch(() => showSnackbar('Failed to load branches', 'error'));
     }, []);
 
     const loadServices = async () => {
@@ -153,7 +156,12 @@ export function ServicesTab({ showSnackbar }: Props) {
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6">Services & Pricing Matrix</Typography>
+                <Box>
+                    <Typography variant="h6">Services & Pricing Matrix</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        Services marked as `ADDON` show up as optional extras during customer booking and cashier registration.
+                    </Typography>
+                </Box>
                 <Button variant="contained" startIcon={<Add />} onClick={() => {
                     setServiceForm({ serviceName: '', description: '', basePrice: 0, durationMinutes: 30, category: 'WASH', isFeatured: false });
                     setServiceDialog(true);
@@ -191,7 +199,7 @@ export function ServicesTab({ showSnackbar }: Props) {
                                                 <Typography variant="caption" color="text.secondary">{service.category}</Typography>
                                                 {!service.active && <Chip size="small" label="Inactive" color="error" sx={{ ml: 1, height: 16, fontSize: '0.6rem' }} />}
                                             </TableCell>
-                                            <TableCell align="right">${service.basePrice.toFixed(2)}</TableCell>
+                                            <TableCell align="right">{formatCurrency(service.basePrice)}</TableCell>
                                             <TableCell align="center">
                                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); setServiceForm(service); setServiceDialog(true); }}>
                                                     <Edit fontSize="small" />
@@ -237,7 +245,7 @@ export function ServicesTab({ showSnackbar }: Props) {
                                         {pricing.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                                                    No specific vehicle pricing configured. <br/> Will use Base Price (${selectedService.basePrice})
+                                                    No specific vehicle pricing configured. <br/> Will use Base Price ({formatCurrency(selectedService.basePrice)})
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
@@ -246,7 +254,7 @@ export function ServicesTab({ showSnackbar }: Props) {
                                                     <TableCell>
                                                         <Chip label={p.vehicleCategory} size="small" />
                                                     </TableCell>
-                                                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>${p.price.toFixed(2)}</TableCell>
+                                                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatCurrency(p.price)}</TableCell>
                                                     <TableCell align="right">{p.discountPercentage || 0}%</TableCell>
                                                     <TableCell align="center">
                                                         <IconButton size="small" onClick={() => { setPricingForm(p); setPricingDialog(true); }}>
@@ -294,7 +302,7 @@ export function ServicesTab({ showSnackbar }: Props) {
                         <Grid2 container spacing={2}>
                             <Grid2 size={{ xs: 6 }}>
                                 <TextField
-                                    label="Base Price (\$)"
+                                    label="Base Price (GHS)"
                                     type="number"
                                     value={serviceForm.basePrice}
                                     onChange={(e) => setServiceForm({ ...serviceForm, basePrice: parseFloat(e.target.value) })}
@@ -323,6 +331,19 @@ export function ServicesTab({ showSnackbar }: Props) {
                                 <MenuItem value="INTERIOR">INTERIOR & DETAILING</MenuItem>
                                 <MenuItem value="INSPECTION">INSPECTION</MenuItem>
                                 <MenuItem value="ADDON">ADD-ON</MenuItem>
+                            </Select>
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel>Branch Availability</InputLabel>
+                            <Select
+                                value={serviceForm.branchId ?? ''}
+                                label="Branch Availability"
+                                onChange={(e) => setServiceForm({ ...serviceForm, branchId: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            >
+                                <MenuItem value="">All Branches</MenuItem>
+                                {branches.map((branch) => (
+                                    <MenuItem key={branch.id} value={branch.id}>{branch.name}</MenuItem>
+                                ))}
                             </Select>
                         </FormControl>
                         <FormControlLabel
@@ -358,7 +379,7 @@ export function ServicesTab({ showSnackbar }: Props) {
                             </FormControl>
                         )}
                         <TextField
-                            label="Price (\$)"
+                            label="Price (GHS)"
                             type="number"
                             value={pricingForm.price}
                             onChange={(e) => setPricingForm({ ...pricingForm, price: parseFloat(e.target.value) })}

@@ -2,6 +2,8 @@ node_modules/
 target/
 dist/
 *.log
+*.err
+*.class
 
 backend/target/
 backend/target-codex/
@@ -12,6 +14,9 @@ backend/*.bat
 backend/*.ps1
 backend/*.jar
 backend/*.class
+backend/.env.local
+backend/.env.tidb.local
+backend/tidb-*.env
 
 frontend/node_modules/
 frontend/dist/

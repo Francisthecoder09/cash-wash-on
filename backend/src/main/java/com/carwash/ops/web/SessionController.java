@@ -4,7 +4,11 @@ import com.carwash.ops.domain.enums.SessionStatus;
 import com.carwash.ops.dto.session.CreateVehicleSessionRequest;
 import com.carwash.ops.dto.session.InspectionRequest;
 import com.carwash.ops.dto.session.MatsTrackingRequest;
+import com.carwash.ops.dto.session.PaymentRequest;
 import com.carwash.ops.dto.session.SessionActionRequest;
+import com.carwash.ops.dto.session.SessionMessageRequest;
+import com.carwash.ops.dto.session.SessionMessageResponse;
+import com.carwash.ops.dto.session.SessionPaymentResponse;
 import com.carwash.ops.dto.session.SignatureRequest;
 import com.carwash.ops.dto.session.VehicleHistoryResponse;
 import com.carwash.ops.dto.session.VehicleSessionResponse;
@@ -81,8 +85,10 @@ public class SessionController {
 
     @PostMapping("/{sessionId}/pay")
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER')")
-    public VehicleSessionResponse pay(@PathVariable Long sessionId, Principal principal) {
-        return sessionService.processPayment(sessionId, principal.getName());
+    public VehicleSessionResponse pay(@PathVariable Long sessionId,
+                                      @Valid @RequestBody PaymentRequest request,
+                                      Principal principal) {
+        return sessionService.processPayment(sessionId, request, principal.getName());
     }
 
     // READ — available to all roles including AUDITOR
@@ -90,5 +96,25 @@ public class SessionController {
     @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
     public VehicleHistoryResponse search(@RequestParam String registrationNumber) {
         return sessionService.searchByRegistration(registrationNumber);
+    }
+
+    @GetMapping("/{sessionId}/messages")
+    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
+    public List<SessionMessageResponse> listMessages(@PathVariable Long sessionId) {
+        return sessionService.listMessages(sessionId);
+    }
+
+    @PostMapping("/{sessionId}/messages")
+    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR')")
+    public SessionMessageResponse sendMessage(@PathVariable Long sessionId,
+                                              @Valid @RequestBody SessionMessageRequest request,
+                                              Principal principal) {
+        return sessionService.sendStaffMessage(sessionId, request, principal.getName());
+    }
+
+    @GetMapping("/{sessionId}/payments")
+    @PreAuthorize("hasAnyRole('ADMIN','BRANCH_MANAGER','CASHIER','LANE_OPERATOR','INSPECTOR','AUDITOR')")
+    public List<SessionPaymentResponse> listPayments(@PathVariable Long sessionId) {
+        return sessionService.listPayments(sessionId);
     }
 }

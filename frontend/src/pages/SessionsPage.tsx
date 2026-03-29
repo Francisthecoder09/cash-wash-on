@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Chip, Grid2, IconButton, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid2, IconButton, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,13 +9,18 @@ import { PremiumScene } from '../components/layout/PremiumScene';
 import { SessionStatusChip } from '../components/layout/SessionStatusChip';
 import { authStore } from '../store/auth';
 import { useHasRole } from '../components/auth/RoleGuard';
-import { RealtimeSessionEvent, SelectOption, VehicleSession, ServiceType, Pricing } from '../types';
+import { RealtimeSessionEvent, SelectOption, VehicleSession, ServiceType, Pricing, SessionMessage, SessionMessageEvent, PaymentMethod, SessionPaymentRecord } from '../types';
+import { formatCurrency } from '../utils/currency';
 import { formatDateTime } from '../utils/format';
+import { resizeVehicleImage } from '../utils/imageUpload';
 import { WS_URL } from '../utils/constants';
 import { getAdminBranchPreference, saveAdminBranchPreference } from '../utils/adminBranchPreference';
-import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff, Payments, ContentCopy } from '@mui/icons-material';
+import { calculateAddOnTotal, getRecommendedAddOnNames } from '../utils/addOns';
+import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff, Payments, ContentCopy, ChatBubbleOutline } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
 import { servicesApi, sessionApi } from '../api/admin';
+
+const sessionsWallpaper = '/flavien-WJiSMLedW3o-unsplash.jpg';
 
 const sanitizePhone = (value: string) => {
   const trimmed = value.replace(/[^\d+]/g, '');
@@ -33,10 +38,25 @@ export function SessionsPage() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLoading, setIsLoading] = useState(false);
   const [services, setServices] = useState<ServiceType[]>([]);
+  const [addOnOptions, setAddOnOptions] = useState<ServiceType[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<number | ''>('');
   const [selectedVehicleType, setSelectedVehicleType] = useState('SUV');
   const [estimatedPrice, setEstimatedPrice] = useState<number>(0);
   const [pricingMatrix, setPricingMatrix] = useState<Pricing[]>([]);
+  const [vehicleImageUrl, setVehicleImageUrl] = useState('');
+  const [selectedAddOnServices, setSelectedAddOnServices] = useState<string[]>([]);
+  const [messageDialogSession, setMessageDialogSession] = useState<VehicleSession | null>(null);
+  const [sessionMessages, setSessionMessages] = useState<SessionMessage[]>([]);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [messageSending, setMessageSending] = useState(false);
+  const [unreadMessageCounts, setUnreadMessageCounts] = useState<Record<number, number>>({});
+  const [paymentDialogSession, setPaymentDialogSession] = useState<VehicleSession | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentSending, setPaymentSending] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<SessionPaymentRecord[]>([]);
   const isAdmin = auth?.role === 'ADMIN';
   const [selectedBranchId, setSelectedBranchId] = useState<string>(
     isAdmin ? getAdminBranchPreference(auth?.branchId) : String(auth?.branchId ?? ''),
@@ -50,6 +70,9 @@ export function SessionsPage() {
   const effectiveBranchId = selectedBranchId === 'ALL' ? null : Number(selectedBranchId || auth?.branchId);
   const effectiveBranchIdRef = useRef<number | null>(effectiveBranchId);
   const canCreateInCurrentView = canCreateSession && effectiveBranchId !== null;
+  const addOnTotal = calculateAddOnTotal(selectedAddOnServices, addOnOptions);
+  const finalEstimatedPrice = estimatedPrice + addOnTotal;
+  const recommendedAddOnNames = getRecommendedAddOnNames(selectedVehicleType, services.find((s) => s.id === selectedServiceId)?.serviceName || '', addOnOptions);
 
   useEffect(() => {
     effectiveBranchIdRef.current = effectiveBranchId;
@@ -65,7 +88,10 @@ export function SessionsPage() {
 
   useEffect(() => {
     api.get<SelectOption[]>('/reference/branches').then(setBranches);
-    servicesApi.getAll(true).then(setServices);
+    servicesApi.getAll(true).then((allServices) => {
+      setServices(allServices.filter((service) => service.category !== 'ADDON'));
+      setAddOnOptions(allServices.filter((service) => service.category === 'ADDON' && (!service.branchId || service.branchId === effectiveBranchIdRef.current)));
+    });
 
     // Online/offline detection
     const handleOnline = () => setIsOnline(true);
@@ -87,6 +113,22 @@ export function SessionsPage() {
           void load(currentBranchId);
         }
       });
+      client.subscribe('/topic/session-messages', (payload) => {
+        const event = JSON.parse(payload.body) as SessionMessageEvent;
+        if (messageDialogSession && messageDialogSession.id === event.sessionId) {
+          setSessionMessages((current) =>
+            current.some((item) => item.id === event.message.id) ? current : [...current, event.message],
+          );
+          return;
+        }
+
+        if (event.message.senderType === 'CUSTOMER') {
+          setUnreadMessageCounts((current) => ({
+            ...current,
+            [event.sessionId]: (current[event.sessionId] ?? 0) + 1,
+          }));
+        }
+      });
     };
     client.onDisconnect = () => {
       setMessage('Reconnecting to session board...');
@@ -98,7 +140,24 @@ export function SessionsPage() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [messageDialogSession]);
+
+  useEffect(() => {
+    servicesApi.getAll(true).then((allServices) => {
+      setAddOnOptions(
+        allServices.filter(
+          (service) => service.category === 'ADDON' && (!service.branchId || service.branchId === effectiveBranchId),
+        ),
+      );
+      setSelectedAddOnServices((prev) =>
+        prev.filter((selected) =>
+          allServices.some(
+            (service) => service.category === 'ADDON' && service.serviceName === selected && (!service.branchId || service.branchId === effectiveBranchId),
+          ),
+        ),
+      );
+    });
+  }, [effectiveBranchId]);
 
   useEffect(() => {
     void load();
@@ -132,6 +191,22 @@ export function SessionsPage() {
     }
   }, [selectedVehicleType, pricingMatrix, selectedServiceId, services]);
 
+  useEffect(() => {
+    if (!messageDialogSession) return;
+
+    void loadSessionMessages(messageDialogSession.id);
+    const interval = window.setInterval(() => {
+      void loadSessionMessages(messageDialogSession.id);
+    }, 12000);
+
+    return () => window.clearInterval(interval);
+  }, [messageDialogSession]);
+
+  useEffect(() => {
+    if (!messageDialogSession) return;
+    setUnreadMessageCounts((current) => ({ ...current, [messageDialogSession.id]: 0 }));
+  }, [messageDialogSession, sessionMessages.length]);
+
   const createSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!effectiveBranchId) {
@@ -148,8 +223,10 @@ export function SessionsPage() {
         customerName: formData.get('customerName'),
         customerPhone: formData.get('customerPhone'),
         vehicleType: selectedVehicleType,
+        vehicleImageUrl: vehicleImageUrl || null,
         servicePackage: services.find(s => s.id === selectedServiceId)?.serviceName || '',
-        estimatedPrice: estimatedPrice,
+        addOnServices: selectedAddOnServices,
+        estimatedPrice: finalEstimatedPrice,
         sourceRequestId: crypto.randomUUID()
       }, true);
       setMessage(navigator.onLine ? 'Session created successfully' : 'Offline: registration queued for sync');
@@ -159,10 +236,26 @@ export function SessionsPage() {
       setSelectedVehicleType('SUV');
       setEstimatedPrice(0);
       setPricingMatrix([]);
+      setVehicleImageUrl('');
+      setSelectedAddOnServices([]);
     } catch (err) {
       setMessage(`Error: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleVehiclePhotoChange = async (file: File | null) => {
+    if (!file) {
+      setVehicleImageUrl('');
+      return;
+    }
+
+    try {
+      const image = await resizeVehicleImage(file);
+      setVehicleImageUrl(image);
+    } catch (err) {
+      setMessage(`Error: ${(err as Error).message}`);
     }
   };
 
@@ -178,12 +271,18 @@ export function SessionsPage() {
     } else if (session.status === 'INSPECTION' && canInspect) {
       await api.post(`/sessions/${session.id}/complete`, {}, true);
     } else if (session.status === 'COMPLETED' && !session.paid && canCreateSession) {
-      await sessionApi.pay(session.id);
+      setPaymentDialogSession(session);
+      setPaymentMethod('CASH');
+      setPaymentReference('');
+      setPaymentNotes('');
+      setPaymentHistory(await sessionApi.getPayments(session.id));
+      return;
     }
     load();
   };
 
   const canActOnSession = (session: VehicleSession): boolean => {
+    if (session.status === 'EXPIRED') return false;
     if (session.status === 'COMPLETED' && !session.paid && canCreateSession) return true;
     if (session.status === 'COMPLETED') return false;
     if ((session.status === 'REGISTERED' || session.status === 'WASHING') && canOperateLane) return true;
@@ -192,6 +291,7 @@ export function SessionsPage() {
   };
 
   const actionLabel = (session: VehicleSession): string => {
+    if (session.status === 'EXPIRED') return 'EXPIRED';
     if (session.status === 'REGISTERED') return 'START WASH';
     if (session.status === 'WASHING') return 'RECORD MATS';
     if (session.status === 'INTERIOR') return 'INSPECT';
@@ -203,11 +303,68 @@ export function SessionsPage() {
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'REGISTERED': return '#0ea5e9';
+      case 'EXPIRED': return '#dc2626';
       case 'WASHING': return '#3b82f6';
       case 'INTERIOR': return '#f5b942';
       case 'INSPECTION': return '#8b5cf6';
       case 'COMPLETED': return '#64748b';
       default: return '#64748b';
+    }
+  };
+
+  const loadSessionMessages = async (sessionId: number) => {
+    setMessageLoading(true);
+    try {
+      const data = await api.get<SessionMessage[]>(`/sessions/${sessionId}/messages`);
+      setSessionMessages(data);
+    } catch (err) {
+      setMessage(`Error: ${(err as Error).message}`);
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  const openMessageDialog = async (session: VehicleSession) => {
+    setMessageDialogSession(session);
+    setMessageDraft('');
+    setUnreadMessageCounts((current) => ({ ...current, [session.id]: 0 }));
+    await loadSessionMessages(session.id);
+  };
+
+  const sendSessionMessage = async () => {
+    if (!messageDialogSession || !messageDraft.trim()) return;
+
+    setMessageSending(true);
+    try {
+      await api.post(`/sessions/${messageDialogSession.id}/messages`, { message: messageDraft.trim() });
+      setMessageDraft('');
+      await loadSessionMessages(messageDialogSession.id);
+      setMessage('Message sent to customer session thread');
+    } catch (err) {
+      setMessage(`Error: ${(err as Error).message}`);
+    } finally {
+      setMessageSending(false);
+    }
+  };
+
+  const submitPayment = async () => {
+    if (!paymentDialogSession) return;
+    setPaymentSending(true);
+    try {
+      await sessionApi.pay(paymentDialogSession.id, {
+        paymentMethod,
+        amount: paymentDialogSession.price,
+        referenceNumber: paymentReference || null,
+        paymentNotes: paymentNotes || null,
+      });
+      setMessage('Payment recorded successfully');
+      setPaymentDialogSession(null);
+      setPaymentHistory([]);
+      await load();
+    } catch (err) {
+      setMessage(`Error: ${(err as Error).message}`);
+    } finally {
+      setPaymentSending(false);
     }
   };
 
@@ -217,7 +374,45 @@ export function SessionsPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      <Stack spacing={4}>
+      <Box
+        sx={{
+          position: 'relative',
+          overflow: 'hidden',
+          borderRadius: 6,
+          p: { xs: 2, md: 2.5 },
+          background: 'linear-gradient(180deg, rgba(7,10,12,0.96), rgba(10,14,18,0.92))',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `linear-gradient(135deg, rgba(6,10,13,0.72), rgba(8,12,16,0.9)), url("${sessionsWallpaper}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center 44%',
+            opacity: 0.9,
+            filter: 'saturate(0.92) contrast(1.02)',
+            pointerEvents: 'none',
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(circle at top left, rgba(255,255,255,0.05), transparent 22%), radial-gradient(circle at bottom right, rgba(14,165,233,0.14), transparent 24%)',
+            pointerEvents: 'none',
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(7,10,12,0.08), rgba(7,10,12,0.24) 48%, rgba(7,10,12,0.38))',
+            pointerEvents: 'none',
+          }}
+        />
+        <Stack spacing={4} sx={{ position: 'relative', zIndex: 1 }}>
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -225,7 +420,7 @@ export function SessionsPage() {
         >
           <Grid2 container spacing={3} alignItems="stretch">
             <Grid2 size={{ xs: 12, xl: 7 }}>
-              <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', position: 'relative', overflow: 'hidden' }}>
+              <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', position: 'relative', overflow: 'hidden', backdropFilter: 'blur(18px)', background: 'linear-gradient(180deg, rgba(20,16,14,0.96), rgba(15,12,10,0.93))' }}>
                 <Stack spacing={2.25}>
                   <Chip label="Session Board" sx={{ width: 'fit-content', bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
                   <Typography variant="h2" sx={{ color: '#eef2f4', lineHeight: 1.03, maxWidth: 720 }}>
@@ -353,6 +548,36 @@ export function SessionsPage() {
                       inputProps={{ inputMode: 'tel', pattern: '[0-9+]*', maxLength: 14 }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      disabled={!canCreateInCurrentView}
+                      sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
+                    >
+                      {vehicleImageUrl ? 'Replace car photo' : 'Add car photo'}
+                      <input
+                        hidden
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          void handleVehiclePhotoChange(event.target.files?.[0] ?? null);
+                        }}
+                      />
+                    </Button>
+                    {vehicleImageUrl && (
+                      <Box
+                        component="img"
+                        src={vehicleImageUrl}
+                        alt="Vehicle preview"
+                        sx={{
+                          width: '100%',
+                          maxHeight: 180,
+                          objectFit: 'cover',
+                          borderRadius: 2,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                        }}
+                      />
+                    )}
                     <TextField
                       select
                       label="Vehicle Type"
@@ -401,9 +626,44 @@ export function SessionsPage() {
                           <Payments sx={{ color: '#0ea5e9', fontSize: 20 }} />
                           <Typography variant="body2" sx={{ color: '#0ea5e9', fontWeight: 600 }}>Calculated Price:</Typography>
                         </Box>
-                        <Typography variant="h6" sx={{ color: '#0ea5e9', fontWeight: 800 }}>${estimatedPrice.toFixed(2)}</Typography>
+                        <Typography variant="h6" sx={{ color: '#0ea5e9', fontWeight: 800 }}>{formatCurrency(finalEstimatedPrice)}</Typography>
                       </Box>
                     )}
+                    <Stack spacing={1}>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        Add-on services
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {addOnOptions.map((addOn) => {
+                          const selected = selectedAddOnServices.includes(addOn.serviceName);
+                          return (
+                            <Chip
+                              key={addOn.id}
+                              label={`${addOn.serviceName} (+${formatCurrency(addOn.basePrice)})${recommendedAddOnNames.includes(addOn.serviceName) ? ' • Recommended' : ''}`}
+                              clickable
+                              disabled={!canCreateInCurrentView}
+                              onClick={() =>
+                                setSelectedAddOnServices((prev) =>
+                                  prev.includes(addOn.serviceName)
+                                    ? prev.filter((entry) => entry !== addOn.serviceName)
+                                    : [...prev, addOn.serviceName],
+                                )
+                              }
+                              sx={{
+                                bgcolor: selected ? 'rgba(14,165,233,0.18)' : 'rgba(148,163,184,0.08)',
+                                color: selected ? '#8fd0e6' : 'text.secondary',
+                                border: selected ? '1px solid rgba(14,165,233,0.34)' : '1px solid rgba(148,163,184,0.12)',
+                              }}
+                            />
+                          );
+                        })}
+                      </Box>
+                      {addOnOptions.length === 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          No active admin add-ons yet. Create `ADDON` services in admin to offer them here.
+                        </Typography>
+                      )}
+                    </Stack>
                     <TextField
                       select
                       label="Lane"
@@ -463,8 +723,8 @@ export function SessionsPage() {
                           p: 3,
                           border: '1px solid rgba(148,163,184,0.16)',
                           borderRadius: 4,
-                          background: 'rgba(15, 27, 22, 0.8)',
-                          backdropFilter: 'blur(10px)',
+                          background: 'rgba(24, 18, 15, 0.94)',
+                          backdropFilter: 'blur(16px)',
                           position: 'relative',
                           overflow: 'hidden',
                           transition: 'all 0.3s ease',
@@ -488,6 +748,20 @@ export function SessionsPage() {
                         />
 
                         <Stack spacing={2}>
+                          {session.vehicleImageUrl && (
+                            <Box
+                              component="img"
+                              src={session.vehicleImageUrl}
+                              alt={`${session.registrationNumber} vehicle`}
+                              sx={{
+                                width: '100%',
+                                height: 160,
+                                objectFit: 'cover',
+                                borderRadius: 3,
+                                border: '1px solid rgba(148,163,184,0.14)',
+                              }}
+                            />
+                          )}
                           <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                             <Box>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -499,9 +773,14 @@ export function SessionsPage() {
                               <Typography color="text.secondary" sx={{ fontSize: '0.9rem' }}>
                                 {session.customerName} - {session.servicePackage}
                               </Typography>
+                              {session.addOnServices && session.addOnServices.length > 0 && (
+                                <Typography color="text.secondary" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+                                  Add-ons: {session.addOnServices.join(', ')}
+                                </Typography>
+                              )}
                               {session.price !== undefined && (
                                 <Typography sx={{ color: '#0ea5e9', fontWeight: 700, fontSize: '1.1rem', mt: 1 }}>
-                                  ${session.price.toFixed(2)} {session.paid && <Chip label="PAID" size="small" sx={{ ml: 1, bgcolor: 'rgba(14, 165, 233, 0.2)', color: '#0ea5e9', fontWeight: 800, height: 20 }} />}
+                                  {formatCurrency(session.price)} {session.paid && <Chip label="PAID" size="small" sx={{ ml: 1, bgcolor: 'rgba(14, 165, 233, 0.2)', color: '#0ea5e9', fontWeight: 800, height: 20 }} />}
                                   {session.portalToken && (
                                     <Tooltip title="Copy Customer Portal Link">
                                       <IconButton
@@ -517,6 +796,11 @@ export function SessionsPage() {
                                       </IconButton>
                                     </Tooltip>
                                   )}
+                                </Typography>
+                              )}
+                              {session.latestPayment && (
+                                <Typography color="text.secondary" sx={{ fontSize: '0.82rem', mt: 0.6 }}>
+                                  Last payment: {session.latestPayment.paymentMethod.replace('_', ' ')} • {new Date(session.latestPayment.paidAt).toLocaleString()}
                                 </Typography>
                               )}
                             </Box>
@@ -541,6 +825,23 @@ export function SessionsPage() {
                           <Typography variant="body2" color="text.secondary">
                             Operator: {session.operatorName ?? 'Pending assignment'}
                           </Typography>
+
+                          <Button
+                            variant="outlined"
+                            startIcon={<ChatBubbleOutline />}
+                            onClick={() => { void openMessageDialog(session); }}
+                            sx={{
+                              borderRadius: 2,
+                              borderColor: 'rgba(148,163,184,0.18)',
+                              color: 'rgba(226,232,240,0.92)',
+                              '&:hover': {
+                                borderColor: 'rgba(56,189,248,0.42)',
+                                bgcolor: 'rgba(56,189,248,0.08)'
+                              }
+                            }}
+                          >
+                            Messages {unreadMessageCounts[session.id] ? `(${unreadMessageCounts[session.id]})` : ''}
+                          </Button>
 
                           {/* Action button */}
                           {canActOnSession(session) ? (
@@ -568,7 +869,7 @@ export function SessionsPage() {
                               </Button>
                             </motion.div>
                           ) : (
-                            session.status !== 'COMPLETED' && (
+                            session.status !== 'COMPLETED' && session.status !== 'EXPIRED' && (
                               <Typography
                                 variant="caption"
                                 color="text.disabled"
@@ -584,6 +885,21 @@ export function SessionsPage() {
                               </Typography>
                             )
                           )}
+                          {session.status === 'EXPIRED' && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                display: 'block',
+                                textAlign: 'center',
+                                p: 1,
+                                background: 'rgba(220, 38, 38, 0.12)',
+                                color: '#fca5a5',
+                                borderRadius: 1,
+                              }}
+                            >
+                              Booking expired after 24 hours without customer check-in
+                            </Typography>
+                          )}
                         </Stack>
                       </Paper>
                     </motion.div>
@@ -592,7 +908,7 @@ export function SessionsPage() {
               </AnimatePresence>
               {sessions.length === 0 && (
                 <Grid2 size={{ xs: 12 }}>
-                  <Paper sx={{ p: 4, borderRadius: 4, bgcolor: 'rgba(15, 27, 22, 0.55)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                  <Paper sx={{ p: 4, borderRadius: 4, bgcolor: 'rgba(24, 18, 15, 0.9)', border: '1px solid rgba(148,163,184,0.12)', backdropFilter: 'blur(14px)' }}>
                     <Stack spacing={1} alignItems="center" textAlign="center">
                       <DirectionsCar sx={{ color: 'rgba(148,163,184,0.6)', fontSize: 36 }} />
                       <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -609,6 +925,201 @@ export function SessionsPage() {
           </Grid2>
         </Grid2>
       </Stack>
+      </Box>
+
+      <Dialog
+        open={Boolean(messageDialogSession)}
+        onClose={() => setMessageDialogSession(null)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            background: 'rgba(9, 14, 18, 0.96)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(148,163,184,0.12)',
+            borderRadius: 4,
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Session Messages {messageDialogSession ? `• ${messageDialogSession.registrationNumber}` : ''}
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: 'rgba(148,163,184,0.12)' }}>
+          <Stack spacing={2}>
+            <Typography color="text.secondary">
+              Send updates to the customer or respond to messages tied to this wash session.
+            </Typography>
+            <Paper
+              sx={{
+                p: 2,
+                minHeight: 220,
+                maxHeight: 340,
+                overflowY: 'auto',
+                bgcolor: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(148,163,184,0.1)',
+                borderRadius: 3,
+                boxShadow: 'none',
+              }}
+            >
+              <Stack spacing={1.5}>
+                {messageLoading ? (
+                  <Typography color="text.secondary">Loading messages...</Typography>
+                ) : sessionMessages.length ? (
+                  sessionMessages.map((item) => {
+                    const isStaff = item.senderType === 'STAFF';
+                    return (
+                      <Stack key={item.id} spacing={0.65} alignItems={isStaff ? 'flex-end' : 'flex-start'}>
+                        <Typography sx={{ color: 'text.secondary', fontSize: '0.78rem' }}>
+                          {item.senderName} • {new Date(item.createdAt).toLocaleString()}
+                        </Typography>
+                        <Box
+                          sx={{
+                            px: 1.5,
+                            py: 1.1,
+                            borderRadius: 2.5,
+                            maxWidth: '100%',
+                            bgcolor: isStaff ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${isStaff ? 'rgba(14,165,233,0.28)' : 'rgba(148,163,184,0.12)'}`,
+                          }}
+                        >
+                          <Typography sx={{ lineHeight: 1.55 }}>{item.message}</Typography>
+                        </Box>
+                      </Stack>
+                    );
+                  })
+                ) : (
+                  <Typography color="text.secondary">
+                    No messages yet for this session.
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              maxRows={5}
+              label="Reply to customer"
+              value={messageDraft}
+              onChange={(event) => setMessageDraft(event.target.value)}
+              placeholder="Let the customer know their wash has started, ask a question, or confirm pickup readiness."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setMessageDialogSession(null)} sx={{ color: 'text.secondary' }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { void sendSessionMessage(); }}
+            disabled={messageSending || !messageDraft.trim()}
+            sx={{
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #10b360 100%)',
+            }}
+          >
+            {messageSending ? 'Sending...' : 'Send message'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(paymentDialogSession)}
+        onClose={() => setPaymentDialogSession(null)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            background: 'rgba(9, 14, 18, 0.96)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(148,163,184,0.12)',
+            borderRadius: 4,
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Record Payment {paymentDialogSession ? `• ${paymentDialogSession.registrationNumber}` : ''}
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: 'rgba(148,163,184,0.12)' }}>
+          <Stack spacing={2}>
+            <Typography color="text.secondary">
+              Capture the payment method, reference, and notes for this completed session.
+            </Typography>
+            {paymentDialogSession && (
+              <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.1)', boxShadow: 'none' }}>
+                <Stack spacing={0.7}>
+                  <Typography sx={{ fontWeight: 700 }}>{paymentDialogSession.servicePackage}</Typography>
+                  <Typography color="text.secondary">Amount due: {formatCurrency(paymentDialogSession.price)}</Typography>
+                  <Typography color="text.secondary">Customer: {paymentDialogSession.customerName}</Typography>
+                </Stack>
+              </Paper>
+            )}
+            <TextField
+              select
+              fullWidth
+              label="Payment method"
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
+            >
+              <MenuItem value="CASH">Cash</MenuItem>
+              <MenuItem value="MOBILE_MONEY">Mobile Money</MenuItem>
+              <MenuItem value="CARD">Card</MenuItem>
+              <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+            </TextField>
+            <TextField
+              fullWidth
+              label="Reference number"
+              value={paymentReference}
+              onChange={(event) => setPaymentReference(event.target.value)}
+              placeholder="Transaction ID, receipt number, or teller reference"
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              maxRows={5}
+              label="Payment notes"
+              value={paymentNotes}
+              onChange={(event) => setPaymentNotes(event.target.value)}
+              placeholder="Optional cashier note"
+            />
+            {!!paymentHistory.length && (
+              <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.1)', boxShadow: 'none' }}>
+                <Stack spacing={1.2}>
+                  <Typography sx={{ fontWeight: 700 }}>Payment history</Typography>
+                  {paymentHistory.map((item) => (
+                    <Box key={item.id}>
+                      <Typography sx={{ fontWeight: 600 }}>
+                        {item.paymentMethod.replace('_', ' ')} • {formatCurrency(item.amount)}
+                      </Typography>
+                      <Typography color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+                        {new Date(item.paidAt).toLocaleString()}{item.processedByName ? ` • ${item.processedByName}` : ''}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setPaymentDialogSession(null)} sx={{ color: 'text.secondary' }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { void submitPayment(); }}
+            disabled={paymentSending}
+            sx={{
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #10b360 100%)',
+            }}
+          >
+            {paymentSending ? 'Saving...' : 'Save payment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </motion.div>
   );
 }

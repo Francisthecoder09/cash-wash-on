@@ -86,7 +86,7 @@ export function AuditLogsPage() {
           <Typography color="error">{error}</Typography>
         </Paper>
       ) : logs.length === 0 ? (
-        <Paper sx={{ p: 6, textAlign: 'center' }}>
+        <Paper sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,247,240,0.05)' }}>
           <HistoryEdu sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
           <Typography color="text.secondary">No audit log entries found.</Typography>
         </Paper>

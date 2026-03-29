@@ -10,6 +10,7 @@ export const WS_URL = window.__APP_CONFIG__?.wsUrl ?? `${API_ORIGIN}/ws`;
 
 export const statusColors = {
   REGISTERED: '#64748b',
+  EXPIRED: '#dc2626',
   WASHING: '#eab308',
   INTERIOR: '#f59e0b',
   INSPECTION: '#ef4444',

@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
+  alpha,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Container,
-  Divider,
+  FormControlLabel,
+  Grid2,
   InputAdornment,
   MenuItem,
   Paper,
@@ -16,24 +19,27 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  ArrowForward as ArrowForwardIcon,
-  AutoAwesome as SparkleIcon,
-  Email as EmailIcon,
-  ConfirmationNumber as RegIcon,
-  DirectionsCar as CarIcon,
-  LocalActivity as ServiceIcon,
-  Person as PersonIcon,
-  Phone as PhoneIcon,
-  Schedule as ScheduleIcon,
-  Security as SecurityIcon,
-  Store as BranchIcon,
-  TaskAlt as TaskAltIcon,
+  CalendarMonth,
+  AutoAwesome,
+  DirectionsCar,
+  Email,
+  LocalOffer,
+  Person,
+  PhoneIphone,
+  Store,
+  TaskAlt,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { Pricing, SelectOption, ServiceType } from '../types';
+import { CustomerSessionTimeoutGuard } from '../components/customer/CustomerSessionTimeoutGuard';
+import { CustomerContactStrip } from '../components/customer/CustomerContactStrip';
+import { calculateAddOnTotal, getRecommendedAddOnNames, isKnownAddOn } from '../utils/addOns';
+import { formatCurrency } from '../utils/currency';
+import { customerSelectMenuProps } from '../utils/customerUi';
+import { resizeVehicleImage } from '../utils/imageUpload';
 import { API_ORIGIN } from '../utils/constants';
 
 const API_BASE = `${API_ORIGIN}/api/portal/sessions`;
+const heroImage = '/olav-tvedt-6lSBynPRaAQ-unsplash.jpg';
 const SLOT_DAYS = 5;
 const SLOT_START_HOUR = 8;
 const SLOT_END_HOUR = 18;
@@ -61,7 +67,6 @@ function generateAppointmentSlots() {
       for (let minute = 0; minute < 60; minute += SLOT_INTERVAL_MINUTES) {
         const slot = new Date(day);
         slot.setHours(hour, minute, 0, 0);
-
         if (slot <= startBuffer) continue;
 
         slots.push({
@@ -86,21 +91,35 @@ const BookingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [branches, setBranches] = useState<SelectOption[]>([]);
   const [services, setServices] = useState<ServiceType[]>([]);
+  const [addOnOptions, setAddOnOptions] = useState<ServiceType[]>([]);
   const [pricing, setPricing] = useState<Pricing[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    branchId: string;
+    registrationNumber: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    vehicleType: string;
+    vehicleImageUrl: string;
+    servicePackage: string;
+    addOnServices: string[];
+    estimatedPrice: number;
+    appointmentAt: string;
+  }>({
     branchId: searchParams.get('branchId') ?? '',
     registrationNumber: normalizePlate(searchParams.get('reg') ?? ''),
     customerName: searchParams.get('name') ?? '',
     customerPhone: sanitizePhone(searchParams.get('phone') ?? ''),
     customerEmail: searchParams.get('email') ?? '',
     vehicleType: searchParams.get('vehicleType') ?? '',
+    vehicleImageUrl: '',
     servicePackage: searchParams.get('servicePackage') ?? '',
-    estimatedPrice: 0,
+    addOnServices: [],
+    estimatedPrice: 45,
     appointmentAt: '',
   });
 
@@ -109,17 +128,26 @@ const BookingPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [branchRes, serviceRes] = await Promise.all([
+        const branchIdParam = searchParams.get('branchId');
+        const addOnUrl = branchIdParam ? `${API_BASE}/add-ons?branchId=${branchIdParam}` : `${API_BASE}/add-ons`;
+        const [branchRes, serviceRes, addOnRes] = await Promise.all([
           fetch(`${API_BASE}/branches`),
           fetch(`${API_BASE}/services`),
+          fetch(addOnUrl),
         ]);
 
-        if (!branchRes.ok || !serviceRes.ok) {
+        if (!branchRes.ok || !serviceRes.ok || !addOnRes.ok) {
           throw new Error('Failed to load booking options.');
         }
 
         setBranches(await branchRes.json());
         setServices(await serviceRes.json());
+        const addOns: ServiceType[] = await addOnRes.json();
+        setAddOnOptions(addOns);
+        setFormData((prev) => ({
+          ...prev,
+          addOnServices: searchParams.getAll('addOn').filter((addOn) => isKnownAddOn(addOn, addOns)),
+        }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load booking page.');
       } finally {
@@ -128,49 +156,56 @@ const BookingPage: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!formData.branchId) {
+      return;
+    }
+
+    fetch(`${API_BASE}/add-ons?branchId=${formData.branchId}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Failed to load add-ons for this branch.')))
+      .then((data: ServiceType[]) => {
+        setAddOnOptions(data);
+        setFormData((prev) => ({
+          ...prev,
+          addOnServices: prev.addOnServices.filter((addOn) => isKnownAddOn(addOn, data)),
+        }));
+      })
+      .catch((err: Error) => setError(err.message));
+  }, [formData.branchId]);
 
   useEffect(() => {
     const selected = services.find((service) => service.serviceName === formData.servicePackage);
     if (!selected || pricing.length > 0) return;
 
-    const fetchPricing = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/services/${selected.id}/pricing`);
-        if (!response.ok) {
-          throw new Error('Pricing could not be loaded for this service.');
-        }
-        const pricingData = await response.json();
-        setPricing(pricingData);
-
-        const preselectedPricing = pricingData.find((item: Pricing) => item.vehicleCategory === formData.vehicleType);
-        if (preselectedPricing) {
+    fetch(`${API_BASE}/services/${selected.id}/pricing`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Pricing could not be loaded for this service.')))
+      .then((data: Pricing[]) => {
+        setPricing(data);
+        if (data.length === 0) {
           setFormData((prev) => ({
             ...prev,
-            estimatedPrice: preselectedPricing.price,
+            estimatedPrice: selected.basePrice,
           }));
+          return;
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load pricing.');
-      }
-    };
-
-    fetchPricing();
+        const preselected = data.find((item) => item.vehicleCategory === formData.vehicleType);
+        if (preselected) {
+          setFormData((prev) => ({ ...prev, estimatedPrice: preselected.price }));
+        }
+      })
+      .catch((err: Error) => setError(err.message));
   }, [formData.servicePackage, formData.vehicleType, pricing.length, services]);
 
-  const selectedBranch = useMemo(
-    () => branches.find((branch) => String(branch.id) === formData.branchId),
-    [branches, formData.branchId],
-  );
-
-  const selectedService = useMemo(
-    () => services.find((service) => service.serviceName === formData.servicePackage),
-    [formData.servicePackage, services],
-  );
-
-  const selectedPricing = useMemo(
-    () => pricing.find((item) => item.vehicleCategory === formData.vehicleType),
-    [formData.vehicleType, pricing],
+  const selectedBranch = branches.find((branch) => String(branch.id) === formData.branchId);
+  const selectedService = services.find((service) => service.serviceName === formData.servicePackage);
+  const selectedPricing = pricing.find((item) => item.vehicleCategory === formData.vehicleType);
+  const addOnTotal = useMemo(() => calculateAddOnTotal(formData.addOnServices, addOnOptions), [addOnOptions, formData.addOnServices]);
+  const grandTotal = formData.estimatedPrice + addOnTotal;
+  const recommendedAddOnNames = useMemo(
+    () => getRecommendedAddOnNames(formData.vehicleType, formData.servicePackage, addOnOptions),
+    [addOnOptions, formData.servicePackage, formData.vehicleType],
   );
 
   const bookingReady = Boolean(
@@ -184,16 +219,6 @@ const BookingPage: React.FC = () => {
       formData.appointmentAt,
   );
 
-  const appointmentText = formData.appointmentAt
-    ? new Date(formData.appointmentAt).toLocaleString([], {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : 'Choose an arrival slot';
-
   const handleServiceChange = async (serviceId: string) => {
     const service = services.find((item) => item.id === Number(serviceId));
     if (!service) return;
@@ -202,16 +227,21 @@ const BookingPage: React.FC = () => {
       ...prev,
       servicePackage: service.serviceName,
       vehicleType: '',
-      estimatedPrice: 0,
+      estimatedPrice: service.basePrice,
     }));
     setPricing([]);
 
     try {
       const response = await fetch(`${API_BASE}/services/${serviceId}/pricing`);
-      if (!response.ok) {
-        throw new Error('Pricing could not be loaded for this service.');
+      if (!response.ok) throw new Error('Pricing could not be loaded for this service.');
+      const data: Pricing[] = await response.json();
+      setPricing(data);
+      if (data.length === 0) {
+        setFormData((prev) => ({
+          ...prev,
+          estimatedPrice: service.basePrice,
+        }));
       }
-      setPricing(await response.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pricing.');
     }
@@ -226,6 +256,20 @@ const BookingPage: React.FC = () => {
       vehicleType: item.vehicleCategory,
       estimatedPrice: item.price,
     }));
+  };
+
+  const handleVehiclePhotoChange = async (file: File | null) => {
+    if (!file) {
+      setFormData((prev) => ({ ...prev, vehicleImageUrl: '' }));
+      return;
+    }
+
+    try {
+      const image = await resizeVehicleImage(file);
+      setFormData((prev) => ({ ...prev, vehicleImageUrl: image }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare vehicle image.');
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -244,12 +288,14 @@ const BookingPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          addOnServices: formData.addOnServices,
           branchId: Number(formData.branchId),
           registrationNumber: formData.registrationNumber.trim(),
           customerName: formData.customerName.trim(),
           customerPhone: formData.customerPhone.trim(),
           customerEmail: formData.customerEmail.trim().toLowerCase(),
-          appointmentAt: formData.appointmentAt,
+          vehicleImageUrl: formData.vehicleImageUrl || null,
+          estimatedPrice: grandTotal,
         }),
       });
 
@@ -274,479 +320,414 @@ const BookingPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '100vh', bgcolor: '#08111c' }}>
-        <CircularProgress sx={{ color: '#f0b44c' }} />
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default' }}>
+        <CircularProgress sx={{ color: '#e36b2c' }} />
       </Box>
     );
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        color: 'white',
-        py: { xs: 4, md: 6 },
-        background: 'linear-gradient(180deg, #101519 0%, #12181d 100%)',
-      }}
-    >
-      <Container maxWidth="xl">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
-            <Paper sx={heroPanelSx}>
-              <Stack spacing={3.5}>
-                <Box>
-                  <Chip label="Customer Booking" sx={heroChipSx} />
-                  <Typography variant="h2" sx={{ mt: 2.5, fontWeight: 900, letterSpacing: -1.6, lineHeight: 1.02 }}>
-                    Book a wash session through a clearer, more dependable reservation flow
-                  </Typography>
-                  <Typography sx={{ mt: 2, maxWidth: 720, color: 'rgba(154,168,176,0.82)', fontSize: '1.02rem' }}>
-                    Choose the branch, select the service, reserve an arrival slot, and generate a live portal link for updates, payment, and handoff.
-                  </Typography>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary' }}>
+      <CustomerSessionTimeoutGuard />
+      <Box
+        sx={{
+          minHeight: { xs: 500, md: 580 },
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: '#14110f',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `linear-gradient(90deg, rgba(20,17,15,0.28) 0%, rgba(20,17,15,0.18) 42%, rgba(20,17,15,0.05) 100%), url("${heroImage}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: { xs: 'center 34%', md: 'center 30%' },
+            filter: 'saturate(1.03) contrast(1.03)',
+          }}
+        />
+        <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1, py: { xs: 4, md: 6 } }}>
+          <Stack spacing={5}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <Box sx={{ width: 42, height: 42, borderRadius: '50%', bgcolor: '#e36b2c', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800 }}>
+                  S
                 </Box>
+                <Box>
+                  <Typography sx={{ color: '#fff8f1', fontWeight: 700, fontSize: '1.1rem' }}>Spark Wash Booking</Typography>
+                  <Typography sx={{ color: 'rgba(255,244,233,0.7)', fontSize: '0.92rem' }}>Customer reservation page</Typography>
+                </Box>
+              </Stack>
+              <Chip label="Book your wash" sx={heroChipSx} />
+            </Stack>
 
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
-                  <Chip icon={<SparkleIcon />} label="Structured booking flow" sx={featureChipSx} />
-                  <Chip icon={<SecurityIcon />} label="Portal access included" sx={featureChipSx} />
-                  <Chip icon={<TaskAltIcon />} label="Live pricing and scheduling" sx={featureChipSx} />
+            <Grid2 container spacing={4} alignItems="center">
+              <Grid2 size={{ xs: 12, lg: 7 }}>
+                <Stack spacing={2.5}>
+                  <Chip label="Car Wash Delivery" sx={heroTagSx} />
+                  <Typography variant="h1" sx={{ color: '#fff8f1', maxWidth: 760, lineHeight: 0.95, fontSize: { xs: '2.75rem', md: undefined } }}>
+                    Premium car wash booking, styled like the site your customer expects
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,244,233,0.84)', maxWidth: 620, fontSize: { xs: '1rem', md: '1.04rem' }, lineHeight: 1.7 }}>
+                    Pick the branch, choose the service, lock in an arrival slot, and generate a live customer portal link for the rest of the journey.
+                  </Typography>
+                  <Grid2 container spacing={2}>
+                    {[
+                      { title: 'Sedan', price: 'GHS 45', note: 'Starting price' },
+                      { title: 'SUV', price: 'GHS 45', note: 'Starting price' },
+                      { title: 'Truck / Van', price: 'GHS 45', note: 'Starting price' },
+                    ].map((card) => (
+                      <Grid2 key={card.title} size={{ xs: 12, sm: 4 }}>
+                        <Paper sx={heroPriceCardSx}>
+                          <Typography sx={{ color: '#fff8f1', fontWeight: 700 }}>{card.title}</Typography>
+                          <Typography sx={{ mt: 1, color: '#fff8f1', fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>
+                            {card.price}
+                          </Typography>
+                          <Typography sx={{ mt: 0.8, color: 'rgba(255,244,233,0.68)' }}>{card.note}</Typography>
+                        </Paper>
+                      </Grid2>
+                    ))}
+                  </Grid2>
                 </Stack>
+              </Grid2>
 
-                <Paper sx={showcaseCardSx}>
-                  <Stack spacing={2.5}>
-                    <Typography variant="overline" sx={{ color: '#f0b44c', letterSpacing: 1.8 }}>
-                      Booking Highlights
-                    </Typography>
-                    <Stack spacing={1.5}>
-                      <ShowcaseRow title="Arrival planning" description="Choose from the next available half-hour slots over the next five days." />
-                      <ShowcaseRow title="Transparent service pricing" description="Vehicle size pricing updates instantly as soon as you select the right category." />
-                      <ShowcaseRow title="After-booking control" description="Every booking ends with a professional receipt, live portal link, and printable confirmation." />
-                    </Stack>
+              <Grid2 size={{ xs: 12, lg: 5 }}>
+                <Paper sx={summaryCardSx}>
+                  <Stack spacing={2}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.12rem' }}>Booking summary</Typography>
+                    <SummaryRow label="Branch" value={selectedBranch?.label || 'Choose a branch'} />
+                    <SummaryRow label="Service" value={formData.servicePackage || 'Choose a package'} />
+                    <SummaryRow label="Vehicle" value={formData.vehicleType || 'Choose a size'} />
+                    <SummaryRow label="Arrival" value={formData.appointmentAt ? new Date(formData.appointmentAt).toLocaleString() : 'Choose a slot'} />
+                    <SummaryRow label="Add-ons" value={formData.addOnServices.length ? `${formData.addOnServices.length} selected` : 'None selected'} />
+                    <SummaryRow label="Estimated total" value={formatCurrency(grandTotal)} emphasize />
                   </Stack>
                 </Paper>
-
-                <Paper sx={assuranceCardSx}>
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
-                    <QuickInfo label="Estimated total" value={`$${formData.estimatedPrice.toFixed(2)}`} accent="#f0b44c" />
-                    <QuickInfo label="Arrival slot" value={appointmentText} accent="#66c28a" />
-                    <QuickInfo
-                      label="Live portal"
-                      value={selectedBranch ? `${selectedBranch.label} booking` : 'Included after booking'}
-                      accent="#5fb7d4"
-                    />
-                  </Stack>
-                </Paper>
-              </Stack>
-            </Paper>
-
-            <Paper sx={formPanelSx}>
-              <Stack spacing={3}>
-                <Box>
-                  <Typography variant="overline" sx={{ color: '#f0b44c', letterSpacing: 1.6 }}>
-                    Booking Details
-                  </Typography>
-                  <Typography variant="h4" sx={{ mt: 1, fontWeight: 800 }}>
-                    Complete the reservation
-                  </Typography>
-                  <Typography sx={{ mt: 1, color: 'rgba(154,168,176,0.82)' }}>
-                    Every field here feeds the session board, receipt, and customer portal automatically.
-                  </Typography>
-                </Box>
-
-                <form onSubmit={handleSubmit}>
-                  <Stack spacing={2.5}>
-                    {error && <Alert severity="error" sx={{ borderRadius: 3 }}>{error}</Alert>}
-
-                    <TextField
-                      select
-                      label="Choose branch"
-                      required
-                      fullWidth
-                      value={formData.branchId}
-                      onChange={(event) => setFormData((prev) => ({ ...prev, branchId: event.target.value }))}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <BranchIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    >
-                      {branches.map((branch) => (
-                        <MenuItem key={branch.id} value={branch.id}>
-                          {branch.label}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-
-                    <TextField
-                      select
-                      label="Wash package"
-                      required
-                      fullWidth
-                      value={selectedService?.id ?? ''}
-                      onChange={(event) => handleServiceChange(event.target.value)}
-                      helperText="Choose the service tier that matches the customer experience you want."
-                      FormHelperTextProps={{ sx: helperTextSx }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <ServiceIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    >
-                      {services.map((service) => (
-                        <MenuItem key={service.id} value={service.id}>
-                          {service.serviceName}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-
-                    {pricing.length > 0 && (
-                      <TextField
-                        select
-                        label="Vehicle category"
-                        required
-                        fullWidth
-                        value={selectedPricing?.id ?? ''}
-                        onChange={(event) => handlePricingChange(event.target.value)}
-                        helperText="Pricing adapts to the vehicle size selected here."
-                        FormHelperTextProps={{ sx: helperTextSx }}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <CarIcon sx={{ color: '#67e8f9' }} />
-                            </InputAdornment>
-                          ),
-                        }}
-                        sx={fieldSx}
-                      >
-                        {pricing.map((item) => (
-                          <MenuItem key={item.id} value={item.id}>
-                            {item.vehicleCategory} - ${item.price.toFixed(2)}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    )}
-
-                    <TextField
-                      select
-                      label="Arrival time slot"
-                      required
-                      fullWidth
-                      value={formData.appointmentAt}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          appointmentAt: event.target.value,
-                        }))
-                      }
-                      helperText="This is the target arrival window shown on the receipt and portal."
-                      FormHelperTextProps={{ sx: helperTextSx }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <ScheduleIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    >
-                      {appointmentSlots.map((slot) => (
-                        <MenuItem key={slot.value} value={slot.value}>
-                          {slot.label}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-
-                    <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
-
-                    <TextField
-                      label="Plate number"
-                      required
-                      fullWidth
-                      placeholder="e.g. GR-1234-23"
-                      value={formData.registrationNumber}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          registrationNumber: normalizePlate(event.target.value),
-                        }))
-                      }
-                      helperText="Letters, numbers, spaces, and dashes only."
-                      FormHelperTextProps={{ sx: helperTextSx }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <RegIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    />
-
-                    <TextField
-                      label="Customer name"
-                      required
-                      fullWidth
-                      value={formData.customerName}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          customerName: event.target.value,
-                        }))
-                      }
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PersonIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    />
-
-                    <TextField
-                      label="Phone number"
-                      required
-                      fullWidth
-                      value={formData.customerPhone}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          customerPhone: sanitizePhone(event.target.value),
-                        }))
-                      }
-                      helperText="Numbers only, maximum 13 digits, with optional leading +."
-                      FormHelperTextProps={{ sx: helperTextSx }}
-                      inputProps={{ inputMode: 'tel', pattern: '[0-9+]*', maxLength: 14 }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PhoneIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    />
-
-                    <TextField
-                      label="Email address"
-                      type="email"
-                      required
-                      fullWidth
-                      value={formData.customerEmail}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          customerEmail: event.target.value.trimStart(),
-                        }))
-                      }
-                      helperText="Login codes and booking updates are sent to this email."
-                      FormHelperTextProps={{ sx: helperTextSx }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <EmailIcon sx={{ color: '#67e8f9' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={fieldSx}
-                    />
-
-                    <Button
-                      type="submit"
-                      fullWidth
-                      variant="contained"
-                      size="large"
-                      disabled={submitting || !bookingReady}
-                      endIcon={submitting ? <CircularProgress size={20} /> : <ArrowForwardIcon />}
-                      sx={primaryButtonSx}
-                    >
-                      {submitting ? 'Confirming booking...' : `Confirm booking${formData.estimatedPrice ? ` - $${formData.estimatedPrice.toFixed(2)}` : ''}`}
-                    </Button>
-                  </Stack>
-                </form>
-              </Stack>
-            </Paper>
-
-            <Paper sx={summaryPanelSx}>
-              <Stack spacing={3}>
-                <Box>
-                  <Typography variant="overline" sx={{ color: '#f0b44c', letterSpacing: 1.6 }}>
-                    Reservation Summary
-                  </Typography>
-                  <Typography variant="h5" sx={{ mt: 1, fontWeight: 800 }}>
-                    Ready for receipt and portal
-                  </Typography>
-                </Box>
-
-                <SummaryBlock title="Selected branch" value={selectedBranch?.label || 'Choose a branch'} />
-                <SummaryBlock title="Wash package" value={selectedService?.serviceName || 'Choose a package'} />
-                <SummaryBlock title="Vehicle" value={selectedPricing?.vehicleCategory || 'Choose a category'} />
-                <SummaryBlock title="Arrival slot" value={appointmentText} />
-                <SummaryBlock title="Plate" value={formData.registrationNumber || 'Add a plate number'} />
-                <SummaryBlock title="Customer" value={formData.customerName || 'Add a customer name'} />
-                <SummaryBlock title="Email access" value={formData.customerEmail || 'Add an email address'} />
-
-                <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
-
-                <Paper sx={priceCardSx}>
-                  <Stack spacing={1.5}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography sx={{ color: 'rgba(154,168,176,0.82)' }}>Estimated total</Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 900, color: '#f0b44c' }}>
-                        ${formData.estimatedPrice.toFixed(2)}
-                      </Typography>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography sx={{ color: 'rgba(154,168,176,0.82)' }}>Estimated duration</Typography>
-                      <Chip
-                        icon={<ScheduleIcon />}
-                        label={selectedService ? `${selectedService.durationMinutes} min` : 'Select a package'}
-                        sx={featureChipSx}
-                      />
-                    </Box>
-                  </Stack>
-                </Paper>
-
-                <Alert severity={bookingReady ? 'success' : 'info'} sx={{ borderRadius: 3 }}>
-                  {bookingReady
-                    ? 'The booking is ready. After submission, the customer lands on a premium confirmation page with receipt actions and a live tracking portal.'
-                    : 'Complete the branch, package, vehicle, arrival slot, and contact details to unlock booking.'}
-                </Alert>
-              </Stack>
-            </Paper>
+              </Grid2>
+            </Grid2>
           </Stack>
-        </motion.div>
+        </Container>
+      </Box>
+
+      <Container maxWidth="xl" sx={{ py: { xs: 5, md: 7 } }}>
+        <Grid2 container spacing={4}>
+          <Grid2 size={{ xs: 12, lg: 7 }}>
+            <Paper sx={sectionCardSx}>
+              <form onSubmit={handleSubmit}>
+                <Stack spacing={2.5}>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    Complete your reservation
+                  </Typography>
+                  <Typography sx={{ color: 'text.secondary' }}>
+                    Every detail here feeds the staff session board, the customer portal, and the booking receipt automatically.
+                  </Typography>
+
+                  {error && <Alert severity="error" sx={{ borderRadius: 3 }}>{error}</Alert>}
+
+                  <TextField
+                    select
+                    label="Choose branch"
+                    value={formData.branchId}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, branchId: event.target.value }))}
+                    SelectProps={{ MenuProps: customerSelectMenuProps }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Store sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                    sx={fieldSx}
+                  >
+                    {branches.map((branch) => (
+                      <MenuItem key={branch.id} value={branch.id}>
+                        {branch.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    select
+                    label="Wash package"
+                    value={selectedService?.id ?? ''}
+                    onChange={(event) => handleServiceChange(event.target.value)}
+                    SelectProps={{ MenuProps: customerSelectMenuProps }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><LocalOffer sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                    sx={fieldSx}
+                  >
+                    {services.map((service) => (
+                      <MenuItem key={service.id} value={service.id}>
+                        {service.serviceName}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  {pricing.length > 0 && (
+                    <TextField
+                      select
+                      label="Vehicle category"
+                      value={selectedPricing?.id ?? ''}
+                      onChange={(event) => handlePricingChange(event.target.value)}
+                      SelectProps={{ MenuProps: customerSelectMenuProps }}
+                      InputProps={{ startAdornment: <InputAdornment position="start"><DirectionsCar sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                      sx={fieldSx}
+                    >
+                      {pricing.map((item) => (
+                        <MenuItem key={item.id} value={item.id}>
+                          {item.vehicleCategory} - {formatCurrency(item.price)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  )}
+
+                  <TextField
+                    select
+                    label="Arrival time slot"
+                    value={formData.appointmentAt}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, appointmentAt: event.target.value }))}
+                    SelectProps={{ MenuProps: customerSelectMenuProps }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                    sx={fieldSx}
+                  >
+                    {appointmentSlots.map((slot) => (
+                      <MenuItem key={slot.value} value={slot.value}>
+                        {slot.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Plate number"
+                    value={formData.registrationNumber}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, registrationNumber: normalizePlate(event.target.value) }))}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><DirectionsCar sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                    sx={fieldSx}
+                  />
+
+                  <Grid2 container spacing={2}>
+                    <Grid2 size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        fullWidth
+                        label="Customer name"
+                        value={formData.customerName}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, customerName: event.target.value.trimStart() }))}
+                        InputProps={{ startAdornment: <InputAdornment position="start"><Person sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                        sx={fieldSx}
+                      />
+                    </Grid2>
+                    <Grid2 size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        fullWidth
+                        label="Phone number"
+                        value={formData.customerPhone}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, customerPhone: sanitizePhone(event.target.value) }))}
+                        inputProps={{ inputMode: 'tel', pattern: '[0-9+]*', maxLength: 14 }}
+                        InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIphone sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                        sx={fieldSx}
+                      />
+                    </Grid2>
+                  </Grid2>
+
+                  <TextField
+                    label="Email address"
+                    type="email"
+                    value={formData.customerEmail}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, customerEmail: event.target.value.trimStart() }))}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ color: '#e36b2c' }} /></InputAdornment> }}
+                    sx={fieldSx}
+                  />
+
+                  <Button component="label" variant="outlined" sx={secondaryButtonSx}>
+                    {formData.vehicleImageUrl ? 'Replace vehicle photo' : 'Add vehicle photo'}
+                    <input hidden type="file" accept="image/*" capture="environment" onChange={(event) => void handleVehiclePhotoChange(event.target.files?.[0] ?? null)} />
+                  </Button>
+
+                  {formData.vehicleImageUrl && (
+                    <Box
+                      component="img"
+                      src={formData.vehicleImageUrl}
+                      alt="Vehicle preview"
+                      sx={{ width: '100%', maxWidth: 340, borderRadius: 4, border: '1px solid rgba(88,66,50,0.12)' }}
+                    />
+                  )}
+
+                  <Button type="submit" variant="contained" disabled={submitting || !bookingReady} endIcon={submitting ? <CircularProgress size={18} /> : <TaskAlt />} sx={ctaButtonSx}>
+                    {submitting ? 'Booking...' : 'Confirm booking'}
+                  </Button>
+                </Stack>
+              </form>
+            </Paper>
+          </Grid2>
+
+          <Grid2 size={{ xs: 12, lg: 5 }}>
+            <Stack spacing={3}>
+              <Paper sx={sectionCardSx}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                  What happens next
+                </Typography>
+                <Stack spacing={1.5}>
+                  {[
+                    'The booking appears on the session board for the selected branch.',
+                    'A live customer portal link is created automatically.',
+                    'The customer can later sign in, track progress, and complete payment.',
+                  ].map((item) => (
+                    <Stack key={item} direction="row" spacing={1.25} alignItems="flex-start">
+                      <Box sx={{ mt: 0.2, width: 28, height: 28, borderRadius: '50%', bgcolor: 'rgba(227,107,44,0.1)', display: 'grid', placeItems: 'center' }}>
+                        <TaskAlt sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Typography sx={{ color: 'text.primary' }}>{item}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+
+              <Paper sx={sectionCardSx}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                  Add-on services
+                </Typography>
+                <Stack spacing={1.5}>
+                  <Grid2 container spacing={1.5}>
+                    {addOnOptions.map((item) => (
+                      <Grid2 key={item.id} size={{ xs: 12, sm: 6 }}>
+                        <Paper sx={extraCardSx}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={formData.addOnServices.includes(item.serviceName)}
+                                onChange={(event) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    addOnServices: event.target.checked
+                                      ? [...prev.addOnServices, item.serviceName]
+                                      : prev.addOnServices.filter((entry) => entry !== item.serviceName),
+                                  }))
+                                }
+                                sx={{ color: '#e36b2c', '&.Mui-checked': { color: '#e36b2c' } }}
+                              />
+                            }
+                            label={
+                              <Box>
+                                <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                                  <Typography sx={{ fontWeight: 700 }}>
+                                    {item.serviceName} - {formatCurrency(item.basePrice)}
+                                  </Typography>
+                                  {recommendedAddOnNames.includes(item.serviceName) && (
+                                    <Chip
+                                      icon={<AutoAwesome sx={{ fontSize: 14 }} />}
+                                      label="Recommended"
+                                      size="small"
+                                      sx={{ bgcolor: 'rgba(227,107,44,0.1)', color: '#e36b2c', fontWeight: 700 }}
+                                    />
+                                  )}
+                                </Stack>
+                                <Typography sx={{ color: 'text.secondary', fontSize: '0.9rem' }}>
+                                  {item.description || 'Optional extra service for this wash.'}
+                                </Typography>
+                                <Typography sx={{ color: 'text.secondary', fontSize: '0.82rem', mt: 0.5 }}>
+                                  Duration: {item.durationMinutes} mins
+                                </Typography>
+                              </Box>
+                            }
+                            sx={{ m: 0, alignItems: 'flex-start' }}
+                          />
+                        </Paper>
+                      </Grid2>
+                    ))}
+                  </Grid2>
+                  {addOnOptions.length === 0 && (
+                    <Typography sx={{ color: 'text.secondary' }}>
+                      No admin add-on services are active yet. Add services with category `ADDON` in admin to show them here.
+                    </Typography>
+                  )}
+                  <SummaryRow label="Add-on total" value={formatCurrency(addOnTotal)} emphasize={addOnTotal > 0} />
+                </Stack>
+              </Paper>
+            </Stack>
+          </Grid2>
+        </Grid2>
       </Container>
+
+      <CustomerContactStrip />
     </Box>
   );
 };
 
-function ShowcaseRow({ title, description }: { title: string; description: string }) {
-  return (
-    <Stack direction="row" spacing={1.5} alignItems="flex-start">
-      <Box sx={{ mt: 0.25, width: 26, height: 26, borderRadius: 999, bgcolor: 'rgba(103,232,249,0.14)', display: 'grid', placeItems: 'center' }}>
-        <TaskAltIcon sx={{ color: '#67e8f9', fontSize: 16 }} />
-      </Box>
-      <Box>
-        <Typography sx={{ fontWeight: 700 }}>{title}</Typography>
-        <Typography sx={{ color: 'rgba(226,232,240,0.66)' }}>{description}</Typography>
-      </Box>
-    </Stack>
-  );
-}
-
-function QuickInfo({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.76)', letterSpacing: 1, fontFamily: '"IBM Plex Mono", monospace' }}>
-        {label}
-      </Typography>
-      <Typography sx={{ mt: 0.5, fontWeight: 800, color: accent }}>{value}</Typography>
-    </Box>
-  );
-}
-
-function SummaryBlock({ title, value }: { title: string; value: string }) {
+function SummaryRow({ label, value, emphasize = false }: { label: string; value: string; emphasize?: boolean }) {
   return (
     <Box display="flex" justifyContent="space-between" gap={2}>
-      <Typography sx={{ color: 'rgba(148,163,184,0.82)' }}>{title}</Typography>
-      <Typography sx={{ textAlign: 'right', fontWeight: 700 }}>{value}</Typography>
+      <Typography sx={{ color: 'text.secondary' }}>{label}</Typography>
+      <Typography sx={{ fontWeight: emphasize ? 800 : 700, color: 'text.primary', textAlign: 'right' }}>{value}</Typography>
     </Box>
   );
 }
 
-const heroPanelSx = {
-  flex: 1.25,
-  p: { xs: 3, md: 4.5 },
-  borderRadius: 4,
-  bgcolor: 'rgba(23,29,34,0.98)',
-  border: '1px solid rgba(154,168,176,0.14)',
-  boxShadow: '0 16px 34px rgba(0, 0, 0, 0.2)',
-};
-
-const formPanelSx = {
-  flex: 0.95,
-  p: { xs: 3, md: 4 },
-  borderRadius: 4,
-  bgcolor: 'rgba(23,29,34,0.98)',
-  border: '1px solid rgba(154,168,176,0.14)',
-  boxShadow: '0 16px 34px rgba(0, 0, 0, 0.18)',
-};
-
-const summaryPanelSx = {
-  flex: 0.8,
-  p: { xs: 3, md: 4 },
-  borderRadius: 4,
-  bgcolor: 'rgba(20,25,30,0.98)',
-  border: '1px solid rgba(154,168,176,0.12)',
-};
-
-const heroChipSx = {
-  bgcolor: 'rgba(240,180,76,0.12)',
-  color: '#f0b44c',
-  border: '1px solid rgba(240,180,76,0.22)',
+const heroTagSx = {
+  width: 'fit-content',
+  bgcolor: 'rgba(255,248,241,0.14)',
+  color: '#fff8f1',
+  border: '1px solid rgba(255,248,241,0.22)',
   fontWeight: 700,
 };
 
-const featureChipSx = {
-  bgcolor: 'rgba(255,255,255,0.05)',
-  color: 'rgba(238,242,244,0.9)',
-  border: '1px solid rgba(154,168,176,0.14)',
+const heroChipSx = {
+  bgcolor: 'rgba(255,248,241,0.1)',
+  color: '#fff8f1',
+  border: '1px solid rgba(255,248,241,0.18)',
+  fontWeight: 600,
 };
 
-const showcaseCardSx = {
+const heroPriceCardSx = {
+  p: 2,
+  borderRadius: 4,
+  bgcolor: 'rgba(255,248,241,0.08)',
+  border: '1px solid rgba(255,248,241,0.18)',
+  boxShadow: '0 16px 30px rgba(8, 6, 5, 0.1)',
+  backdropFilter: 'blur(10px)',
+};
+
+const summaryCardSx = {
   p: 3,
-  borderRadius: 3,
-  bgcolor: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(148,163,184,0.12)',
+  borderRadius: 5,
+  bgcolor: 'rgba(255,247,240,0.08)',
+  border: '1px solid rgba(255,248,241,0.18)',
+  boxShadow: '0 20px 40px rgba(8, 6, 5, 0.12)',
+  backdropFilter: 'blur(11px)',
 };
 
-const assuranceCardSx = {
-  p: 2.5,
-  borderRadius: 3,
-  bgcolor: 'rgba(18,24,29,0.96)',
-  border: '1px solid rgba(154,168,176,0.12)',
+const sectionCardSx = {
+  p: 3,
+  borderRadius: 4,
+  bgcolor: 'rgba(255,247,240,0.05)',
 };
-
-const priceCardSx = {
-  p: 2.5,
-  borderRadius: 3,
-  bgcolor: 'rgba(240,180,76,0.08)',
-  border: '1px solid rgba(240,180,76,0.18)',
-};
-
-const helperTextSx = { color: 'rgba(154,168,176,0.76)' };
 
 const fieldSx = {
-  '& .MuiOutlinedInput-root': {
-    borderRadius: 2.5,
-    color: '#eef2f4',
-    bgcolor: '#13191e',
-    '& fieldset': { borderColor: 'rgba(154,168,176,0.18)' },
-    '&:hover fieldset': { borderColor: 'rgba(154,168,176,0.34)' },
-    '&.Mui-focused fieldset': { borderColor: '#f0b44c' },
-  },
-  '& .MuiInputLabel-root': { color: 'rgba(154,168,176,0.78)' },
-  '& .MuiInputLabel-root.Mui-focused': { color: '#f0b44c' },
+  '& .MuiOutlinedInput-root': (theme: any) => ({
+    bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.04) : '#fff',
+  }),
 };
 
-const primaryButtonSx = {
-  py: 1.9,
-  borderRadius: 2.5,
-  bgcolor: '#f0b44c',
-  color: '#1b1f22',
-  fontWeight: 900,
-  fontSize: '1rem',
-  boxShadow: 'none',
-  '&:hover': { bgcolor: '#f5cb7f' },
-  '&.Mui-disabled': {
-    bgcolor: 'rgba(240,180,76,0.28)',
-    color: 'rgba(27,31,34,0.7)',
+const ctaButtonSx = {
+  bgcolor: '#e36b2c',
+  color: '#fffaf5',
+  borderRadius: 999,
+  py: 1.35,
+  '&:hover': {
+    bgcolor: '#cf5d21',
   },
+};
+
+const secondaryButtonSx = {
+  color: '#f5ede5',
+  borderColor: 'rgba(255,243,232,0.14)',
+  borderRadius: 999,
+  py: 1.2,
+  '&:hover': {
+    borderColor: 'rgba(255,243,232,0.24)',
+    bgcolor: 'rgba(255,247,240,0.05)',
+  },
+};
+
+const extraCardSx = {
+  p: 1.5,
+  borderRadius: 3,
+  bgcolor: 'rgba(227,107,44,0.06)',
+  border: '1px solid rgba(255,243,232,0.08)',
+  boxShadow: 'none',
 };
 
 export default BookingPage;

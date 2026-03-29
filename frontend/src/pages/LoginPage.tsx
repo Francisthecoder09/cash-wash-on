@@ -23,15 +23,16 @@ import { ArrowForward, Lock, Logout, MailOutline, PersonOutline, Visibility, Vis
 
 const glassFieldSx = {
   '& .MuiOutlinedInput-root': {
-    color: '#eef2f4',
-    borderRadius: 2.5,
-    bgcolor: 'rgba(255,255,255,0.08)',
-    backdropFilter: 'blur(22px)',
-    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
-    '&.Mui-focused fieldset': { borderColor: 'rgba(255,255,255,0.44)' },
+    color: '#fffaf6',
+    borderRadius: 3,
+    bgcolor: 'rgba(255,255,255,0.04)',
+    backdropFilter: 'blur(26px) saturate(145%)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)',
+    '& fieldset': { borderColor: 'rgba(255,255,255,0.16)' },
+    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
+    '&.Mui-focused fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
   },
-  '& .MuiInputLabel-root': { color: 'rgba(230,238,245,0.74)' },
+  '& .MuiInputLabel-root': { color: 'rgba(255,245,236,0.78)' },
   '& .MuiInputLabel-root.Mui-focused': { color: '#ffffff' },
 };
 
@@ -87,10 +88,10 @@ export function LoginPage() {
           inset: 0,
           zIndex: 0,
           backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+            'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
           backgroundSize: '52px 52px',
           maskImage: 'linear-gradient(180deg, rgba(0,0,0,0.7), rgba(0,0,0,0.25))',
-          opacity: 0.1,
+          opacity: 0.08,
           pointerEvents: 'none',
         }}
       />
@@ -101,10 +102,20 @@ export function LoginPage() {
           inset: 0,
           zIndex: 0,
           backgroundImage:
-            'linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.48)), url("/login-car-hero.svg")',
+            'linear-gradient(135deg, rgba(5,7,10,0.14), rgba(5,7,10,0.36)), linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.34)), url("/dhiva-krishna-X16zXcbxU4U-unsplash.jpg")',
           backgroundSize: 'cover',
-          backgroundPosition: 'center center',
-          filter: 'saturate(1.02) contrast(1.02)',
+          backgroundPosition: 'center 60%',
+          filter: 'saturate(1.08) contrast(1.05) brightness(1)',
+          pointerEvents: 'none',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          background:
+            'radial-gradient(circle at 50% 24%, rgba(255,255,255,0.1), transparent 18%), radial-gradient(circle at 50% 82%, rgba(0,0,0,0.2), transparent 32%)',
           pointerEvents: 'none',
         }}
       />
@@ -116,13 +127,25 @@ export function LoginPage() {
           width: '100%',
           maxWidth: 430,
           p: { xs: 3, md: 4 },
-          borderRadius: 4,
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.08) 100%)',
-          border: '1px solid rgba(255,255,255,0.18)',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.18)',
-          backdropFilter: 'blur(28px)',
+          borderRadius: 5,
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.08) 28%, rgba(255,255,255,0.05) 100%)',
+          border: '1px solid rgba(255,255,255,0.16)',
+          boxShadow: '0 32px 90px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+          backdropFilter: 'blur(34px) saturate(150%)',
+          outline: '1px solid rgba(255,255,255,0.06)',
+          overflow: 'hidden',
         }}
       >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 26%, rgba(255,255,255,0.01) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
         <Stack spacing={3}>
           <Box textAlign="center">
             <Box
@@ -138,7 +161,7 @@ export function LoginPage() {
                 boxShadow: '0 12px 30px rgba(0,0,0,0.32)',
               }}
             />
-            <Typography variant="h4" sx={{ color: '#ffffff', fontWeight: 700, textShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
+            <Typography variant="h4" sx={{ color: '#ffffff', fontWeight: 700, textShadow: '0 4px 20px rgba(0,0,0,0.24)' }}>
               Sign in
             </Typography>
           </Box>
@@ -217,13 +240,15 @@ export function LoginPage() {
                 endIcon={isLoading ? <CircularProgress size={18} /> : <ArrowForward />}
                 sx={{
                   py: 1.55,
-                  borderRadius: 2.5,
+                  borderRadius: 999,
                   fontWeight: 700,
-                  bgcolor: 'rgba(255,255,255,0.88)',
-                  color: '#0f1217',
-                  boxShadow: '0 12px 28px rgba(0,0,0,0.24)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                  color: '#fffaf6',
+                  border: '1px solid rgba(255,255,255,0.22)',
+                  backdropFilter: 'blur(18px)',
+                  boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.12)',
                   '&:hover': {
-                    bgcolor: '#ffffff',
+                    bgcolor: 'rgba(255,255,255,0.22)',
                   },
                 }}
               >
@@ -237,12 +262,13 @@ export function LoginPage() {
                   onClick={handleLogout}
                   startIcon={<Logout />}
                   sx={{
-                    borderRadius: 2.5,
+                    borderRadius: 999,
                     color: '#ffffff',
-                    borderColor: 'rgba(255,255,255,0.24)',
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
                     '&:hover': {
-                      borderColor: 'rgba(255,255,255,0.4)',
-                      bgcolor: 'rgba(255,255,255,0.08)',
+                      borderColor: 'rgba(255,255,255,0.3)',
+                      bgcolor: 'rgba(255,255,255,0.07)',
                     },
                   }}
                 >
@@ -257,13 +283,14 @@ export function LoginPage() {
                 fullWidth
                 startIcon={<PersonOutline />}
                 sx={{
-                  borderRadius: 2.5,
+                  borderRadius: 999,
                   color: '#ffffff',
-                  borderColor: 'rgba(255,255,255,0.24)',
+                  borderColor: 'rgba(255,255,255,0.18)',
+                  bgcolor: 'rgba(255,255,255,0.03)',
                   fontWeight: 700,
                   '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.4)',
-                    bgcolor: 'rgba(255,255,255,0.08)',
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    bgcolor: 'rgba(255,255,255,0.07)',
                   },
                 }}
               >

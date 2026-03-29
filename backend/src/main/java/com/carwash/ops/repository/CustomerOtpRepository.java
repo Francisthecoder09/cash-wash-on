@@ -13,4 +13,6 @@ public interface CustomerOtpRepository extends JpaRepository<CustomerOtpEntity, 
     // Find the latest unused, unexpired OTP for a given phone number
     Optional<CustomerOtpEntity> findFirstByEmailAndIsUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(
             String email, Instant now);
+
+    Optional<CustomerOtpEntity> findFirstByEmailOrderByCreatedAtDesc(String email);
 }

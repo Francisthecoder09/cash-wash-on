@@ -53,6 +53,7 @@ type ChecklistState = {
 
 const CHECKLIST_KEY = 'lane-tablet-checklist';
 const NOTE_KEY = 'lane-tablet-note';
+const tabletWallpaper = '/spencer-davis-DFnCCRExDdc-unsplash.jpg';
 
 const stepLabels: SessionStatus[] = ['REGISTERED', 'WASHING', 'INTERIOR', 'INSPECTION', 'COMPLETED'];
 
@@ -178,7 +179,7 @@ export function TabletLanePage() {
   }, []);
 
   const activeQueue = useMemo(
-    () => sessions.filter((session) => session.status !== 'COMPLETED'),
+    () => sessions.filter((session) => session.status !== 'COMPLETED' && session.status !== 'EXPIRED'),
     [sessions]
   );
 
@@ -210,7 +211,7 @@ export function TabletLanePage() {
   const elapsedMinutes = activeSession
     ? Math.floor((Date.now() - new Date(activeSession.washingStartedAt ?? activeSession.registeredAt).getTime()) / 60000)
     : 0;
-  const isOverdue = elapsedMinutes >= 45 && activeSession?.status !== 'COMPLETED';
+  const isOverdue = elapsedMinutes >= 45 && activeSession?.status !== 'COMPLETED' && activeSession?.status !== 'EXPIRED';
 
   useEffect(() => {
     if (!isOverdue || !soundEnabled) return;
@@ -311,8 +312,37 @@ export function TabletLanePage() {
   });
 
   return (
-    <Box sx={{ minHeight: 'calc(100vh - 120px)' }}>
-      <Grid2 container spacing={3}>
+    <Box
+      sx={{
+        minHeight: 'calc(100vh - 120px)',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: 6,
+        p: { xs: 2, md: 2.5 },
+        background: 'linear-gradient(180deg, rgba(7,10,12,0.95), rgba(9,12,16,0.92))',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `linear-gradient(135deg, rgba(8,10,13,0.7), rgba(8,11,14,0.88)), url("${tabletWallpaper}")`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 38%',
+          filter: 'saturate(0.94) contrast(1.02)',
+          pointerEvents: 'none',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at top right, rgba(255,255,255,0.06), transparent 24%), radial-gradient(circle at bottom left, rgba(239,68,68,0.12), transparent 24%)',
+          pointerEvents: 'none',
+        }}
+      />
+      <Grid2 container spacing={3} sx={{ position: 'relative', zIndex: 1 }}>
         <Grid2 size={{ xs: 12, lg: 4 }}>
           <Stack spacing={3}>
             <Paper
@@ -321,10 +351,11 @@ export function TabletLanePage() {
                 borderRadius: 5,
                 background:
                   isOverdue
-                    ? 'radial-gradient(circle at top left, rgba(239,68,68,0.22), transparent 40%), linear-gradient(180deg, rgba(25,8,8,0.96), rgba(24,11,14,0.92))'
-                    : 'radial-gradient(circle at top left, rgba(14,165,233,0.22), transparent 40%), linear-gradient(180deg, rgba(8,15,19,0.96), rgba(11,24,18,0.92))',
+                    ? 'radial-gradient(circle at top left, rgba(239,68,68,0.2), transparent 40%), linear-gradient(180deg, rgba(30,15,15,0.96), rgba(24,13,14,0.93))'
+                    : 'radial-gradient(circle at top left, rgba(14,165,233,0.18), transparent 40%), linear-gradient(180deg, rgba(24,18,15,0.96), rgba(18,14,12,0.93))',
                 border: isOverdue ? '1px solid rgba(248,113,113,0.3)' : '1px solid rgba(56,189,248,0.18)',
                 boxShadow: isOverdue ? '0 20px 45px rgba(127, 29, 29, 0.35)' : '0 20px 45px rgba(3, 7, 18, 0.35)',
+                backdropFilter: 'blur(16px)',
               }}
             >
               <Stack spacing={2.5}>
@@ -469,7 +500,7 @@ export function TabletLanePage() {
               </Stack>
             </Paper>
 
-            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(12,24,16,0.88)' }}>
+            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(24,18,15,0.94)', backdropFilter: 'blur(16px)' }}>
               <Stack spacing={2}>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <PlaylistAddCheckCircle sx={{ color: '#38bdf8' }} />
@@ -498,7 +529,7 @@ export function TabletLanePage() {
 
         <Grid2 size={{ xs: 12, lg: 8 }}>
           <Stack spacing={3}>
-            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(12,24,16,0.88)' }}>
+            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(24,18,15,0.94)', backdropFilter: 'blur(16px)' }}>
               <Stack spacing={2.5}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
                   <Box>
@@ -583,7 +614,7 @@ export function TabletLanePage() {
 
             <Grid2 container spacing={3}>
               <Grid2 size={{ xs: 12, xl: 7 }}>
-                <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(12,24,16,0.88)' }}>
+                <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(24,18,15,0.94)', backdropFilter: 'blur(16px)' }}>
                   <Stack spacing={2.5}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <VerifiedUser sx={{ color: '#38bdf8' }} />
@@ -627,7 +658,7 @@ export function TabletLanePage() {
               </Grid2>
 
               <Grid2 size={{ xs: 12, xl: 5 }}>
-                <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(12,24,16,0.88)' }}>
+                <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(24,18,15,0.94)', backdropFilter: 'blur(16px)' }}>
                   <Stack spacing={2}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Queue sx={{ color: '#38bdf8' }} />
@@ -681,7 +712,7 @@ export function TabletLanePage() {
               </Grid2>
             </Grid2>
 
-            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(12,24,16,0.88)' }}>
+            <Paper sx={{ p: 3, borderRadius: 5, bgcolor: 'rgba(24,18,15,0.94)', backdropFilter: 'blur(16px)' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                 <Stack spacing={0.5}>
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>

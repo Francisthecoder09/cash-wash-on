@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType; // Lazy vs Eager loading
 import jakarta.persistence.ForeignKey; // Foreign key constraint
 import jakarta.persistence.Index; // Database index
 import jakarta.persistence.JoinColumn; // Foreign key column
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne; // Many-to-one relationship
 import jakarta.persistence.Table; // Table configuration
 
@@ -128,6 +129,15 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
         this.vehicleType = vehicleType;
     }
 
+    /** @return Optional customer-provided vehicle image as a data URL */
+    public String getVehicleImageUrl() {
+        return vehicleImageUrl;
+    }
+
+    public void setVehicleImageUrl(String vehicleImageUrl) {
+        this.vehicleImageUrl = vehicleImageUrl;
+    }
+
     /** @return Unique token for customer portal access */
     public String getPortalToken() {
         return portalToken;
@@ -146,6 +156,15 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
 
     public void setServicePackage(String servicePackage) {
         this.servicePackage = servicePackage;
+    }
+
+    /** @return Selected add-on services stored for this wash session */
+    public String getAddOnServices() {
+        return addOnServices;
+    }
+
+    public void setAddOnServices(String addOnServices) {
+        this.addOnServices = addOnServices;
     }
 
     /** @return The customer associated with this session */
@@ -316,6 +335,11 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
     @Column(name = "vehicle_type", nullable = false, length = 50)
     private String vehicleType;
 
+    /** Optional vehicle image for booking and registration review */
+    @Lob
+    @Column(name = "vehicle_image_url", columnDefinition = "LONGTEXT")
+    private String vehicleImageUrl;
+
     /** Unique token for customer portal access */
     @Column(name = "portal_token", unique = true, length = 100)
     private String portalToken;
@@ -323,6 +347,11 @@ public class VehicleSession extends BaseEntity { // Inherits id, createdAt, upda
     /** Service package selected - determines process and price */
     @Column(name = "service_package", nullable = false, length = 80)
     private String servicePackage;
+
+    /** Optional add-on services selected by the customer or cashier */
+    @Lob
+    @Column(name = "add_on_services")
+    private String addOnServices;
 
     /**
      * Current status - THIS IS THE STATE MACHINE

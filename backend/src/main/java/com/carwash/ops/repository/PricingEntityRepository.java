@@ -1,6 +1,7 @@
 package com.carwash.ops.repository;
 
 import com.carwash.ops.domain.entity.PricingEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,8 +17,10 @@ public interface PricingEntityRepository extends JpaRepository<PricingEntity, Lo
     Optional<PricingEntity> findActiveByServiceTypeAndCategory(@Param("serviceTypeId") Long serviceTypeId,
             @Param("vehicleCategory") String vehicleCategory);
 
+    @EntityGraph(attributePaths = "serviceType")
     List<PricingEntity> findByActiveTrue();
 
+    @EntityGraph(attributePaths = "serviceType")
     List<PricingEntity> findByServiceTypeId(Long serviceTypeId);
 
     List<PricingEntity> findByVehicleCategory(String vehicleCategory);

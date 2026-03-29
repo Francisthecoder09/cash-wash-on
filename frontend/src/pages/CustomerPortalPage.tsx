@@ -2,53 +2,132 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  alpha,
   Box,
   Button,
   Chip,
   CircularProgress,
   Container,
-  LinearProgress,
+  Divider,
+  Grid2,
   Paper,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
+  TextField,
   Typography,
+  useTheme,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
 } from '@mui/material';
 import {
-  CheckCircle as CheckCircleIcon,
-  ContentCopy as CopyIcon,
-  ContentPasteGo as StatusIcon,
-  Draw as SignIcon,
-  EmojiEvents as LoyaltyIcon,
-  EventAvailable as SlotIcon,
-  History as HistoryIcon,
-  LocalOffer as OfferIcon,
-  MarkUnreadChatAlt as MessageIcon,
-  Payment as PaymentIcon,
-  Refresh as RefreshIcon,
-  Schedule as ClockIcon,
-  TaskAlt as TaskAltIcon,
+  AccessTime,
+  ChatBubbleOutline,
+  CheckCircle,
+  ContentCopy,
+  DirectionsCar,
+  Email,
+  History,
+  LocalOffer,
+  Loyalty,
+  NotificationsActive,
+  Payment,
+  Refresh,
+  Stars,
+  TaskAlt,
+  Verified,
 } from '@mui/icons-material';
 import SignaturePad from 'react-signature-canvas';
-import { AnimatePresence, motion } from 'framer-motion';
-import { SessionStatus, VehicleSession } from '../types';
-import { API_ORIGIN } from '../utils/constants';
+import { motion } from 'framer-motion';
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
+import { PaymentMethod, SessionMessage, SessionMessageEvent, SessionStatus, VehicleSession } from '../types';
+import { CustomerSessionTimeoutGuard } from '../components/customer/CustomerSessionTimeoutGuard';
+import { CustomerContactStrip } from '../components/customer/CustomerContactStrip';
+import { formatCurrency } from '../utils/currency';
+import { customerSelectMenuProps } from '../utils/customerUi';
+import { API_ORIGIN, WS_URL } from '../utils/constants';
 
 const API_BASE = `${API_ORIGIN}/api/portal/sessions`;
-const statusSteps: SessionStatus[] = ['REGISTERED', 'WASHING', 'INTERIOR', 'INSPECTION', 'COMPLETED'];
+const heroImage = '/cory-rogers-6l4CBNleEBE-unsplash.jpg';
+
+const statusOrder: SessionStatus[] = ['REGISTERED', 'WASHING', 'INTERIOR', 'INSPECTION', 'COMPLETED'];
+
+const pricingCards = [
+  { title: 'Sedan', price: 'GHS 45', detail: 'Starting price' },
+  { title: 'SUV', price: 'GHS 45', detail: 'Starting price' },
+  { title: 'Truck / Van', price: 'GHS 45', detail: 'Starting price' },
+];
+
+function formatStage(status: SessionStatus) {
+  return status.replace('_', ' ');
+}
+
+function formatRelativeDate(value?: string) {
+  if (!value) return 'Just now';
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const diffHours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+
+  if (diffHours < 1) return 'Less than 1 hour ago';
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  return date.toLocaleDateString();
+}
+
+function getNotificationToneStyles(tone: string) {
+  switch (tone) {
+    case 'success':
+      return { bg: 'rgba(88, 173, 135, 0.12)', border: 'rgba(88, 173, 135, 0.28)', color: '#8fe2b6' };
+    case 'warning':
+      return { bg: 'rgba(227, 170, 44, 0.12)', border: 'rgba(227, 170, 44, 0.28)', color: '#f0c96e' };
+    default:
+      return { bg: 'rgba(82, 151, 255, 0.12)', border: 'rgba(82, 151, 255, 0.26)', color: '#8ab9ff' };
+  }
+}
+
+function buildStatusCopy(session: VehicleSession) {
+  switch (session.status) {
+    case 'REGISTERED':
+      return 'Your vehicle is booked and waiting for wash lane handling.';
+    case 'EXPIRED':
+      return 'This booking expired because the scheduled arrival window passed without check-in.';
+    case 'WASHING':
+      return 'The wash process is active right now.';
+    case 'INTERIOR':
+      return 'Interior detailing is currently in progress.';
+    case 'INSPECTION':
+      return 'Final quality inspection is underway.';
+    case 'COMPLETED':
+      return session.paid ? 'Everything is complete and paid.' : 'Your wash is complete and waiting for payment.';
+    default:
+      return 'Your session is live.';
+  }
+}
 
 const CustomerPortalPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useParams<{ token: string }>();
+  const sigPad = useRef<SignaturePad>(null);
+  const theme = useTheme();
+
   const [session, setSession] = useState<VehicleSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [signing, setSigning] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [copied, setCopied] = useState(false);
-  const sigPad = useRef<SignaturePad>(null);
+  const [showSignature, setShowSignature] = useState(false);
+  const [messages, setMessages] = useState<SessionMessage[]>([]);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [unreadStaffMessages, setUnreadStaffMessages] = useState(0);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('MOBILE_MONEY');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
 
   const fetchSession = async (background = false) => {
     if (!token) return;
@@ -68,7 +147,6 @@ const CustomerPortalPage: React.FC = () => {
       const data = await response.json();
       setSession(data);
       setError(null);
-      setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load the portal session.');
     } finally {
@@ -77,54 +155,67 @@ const CustomerPortalPage: React.FC = () => {
     }
   };
 
+  const fetchMessages = async () => {
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_BASE}/${token}/messages`);
+      if (!response.ok) {
+        throw new Error('Messages could not be loaded.');
+      }
+      const data: SessionMessage[] = await response.json();
+      setMessages(data);
+    } catch (err) {
+      setError((current) => current ?? (err instanceof Error ? err.message : 'Messages could not be loaded.'));
+    }
+  };
+
   useEffect(() => {
-    fetchSession();
-    const interval = setInterval(() => fetchSession(true), 10000);
-    return () => clearInterval(interval);
+    void fetchSession();
+    void fetchMessages();
+    const interval = window.setInterval(() => {
+      void fetchSession(true);
+      void fetchMessages();
+    }, 15000);
+    return () => window.clearInterval(interval);
   }, [token]);
 
-  const handleSign = async () => {
-    const pad = sigPad.current;
-    if (!pad || pad.isEmpty()) return;
+  useEffect(() => {
+    if (!session) return;
 
-    try {
-      setLoading(true);
-      setError(null);
-      const signatureData = pad.getTrimmedCanvas().toDataURL('image/png');
-      const response = await fetch(`${API_BASE}/${token}/sign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedBy: session?.customerName, signatureData }),
+    const client = new Client({
+      webSocketFactory: () => new SockJS(WS_URL),
+      reconnectDelay: 5000,
+    });
+
+    client.onConnect = () => {
+      client.subscribe(`/topic/session-messages/${session.id}`, (payload) => {
+        const event = JSON.parse(payload.body) as SessionMessageEvent;
+        setMessages((current) =>
+          current.some((item) => item.id === event.message.id) ? current : [...current, event.message],
+        );
+        if (event.message.senderType === 'STAFF') {
+          setUnreadStaffMessages((current) => current + 1);
+        }
       });
+    };
 
-      if (!response.ok) {
-        throw new Error('Failed to save signature.');
-      }
+    client.activate();
+    return () => {
+      client.deactivate();
+    };
+  }, [session?.id]);
 
-      setSigning(false);
-      await fetchSession();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save signature.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePayment = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${API_BASE}/${token}/pay`, { method: 'POST' });
-      if (!response.ok) {
-        throw new Error('Payment failed.');
-      }
-      await fetchSession();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Payment failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const isExpired = session?.status === 'EXPIRED';
+  const progress = session
+    ? isExpired
+      ? 0
+      : ((statusOrder.indexOf(session.status) + 1) / statusOrder.length) * 100
+    : 0;
+  const stageCopy = session ? buildStatusCopy(session) : '';
+  const appointmentText = session?.appointmentAt
+    ? new Date(session.appointmentAt).toLocaleString()
+    : 'Walk-in session';
 
   const handleCopyPortalLink = async () => {
     try {
@@ -133,6 +224,100 @@ const CustomerPortalPage: React.FC = () => {
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setError('Could not copy the portal link on this browser.');
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/${token}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethod,
+          amount: session?.price,
+          referenceNumber: paymentReference || null,
+          paymentNotes: paymentNotes || null,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Payment failed.');
+      }
+      setShowPaymentDialog(false);
+      setPaymentReference('');
+      setPaymentNotes('');
+      await fetchSession();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Payment failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!token || !messageDraft.trim()) return;
+
+    try {
+      setSendingMessage(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/${token}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageDraft.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Message could not be sent.');
+      }
+
+      setMessageDraft('');
+      setUnreadStaffMessages(0);
+      await fetchMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Message could not be sent.');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const markMessagesRead = () => {
+    setUnreadStaffMessages(0);
+  };
+
+  const openPaymentDialog = () => {
+    setPaymentMethod('MOBILE_MONEY');
+    setPaymentReference('');
+    setPaymentNotes('');
+    setShowPaymentDialog(true);
+  };
+
+  const handleSign = async () => {
+    const pad = sigPad.current;
+    if (!pad || pad.isEmpty() || !token || !session) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const signatureData = pad.getTrimmedCanvas().toDataURL('image/png');
+      const response = await fetch(`${API_BASE}/${token}/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedBy: session.customerName, signatureData }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save signature.');
+      }
+
+      setShowSignature(false);
+      await fetchSession();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save signature.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -148,176 +333,94 @@ const CustomerPortalPage: React.FC = () => {
       vehicleType: session.vehicleType,
       servicePackage: session.servicePackage,
     });
+    session.addOnServices?.forEach((addOn) => params.append('addOn', addOn));
 
     navigate(`/portal/book?${params.toString()}`);
   };
 
-  const activeStep = session ? statusSteps.indexOf(session.status) : 0;
-  const progress = session ? ((activeStep + 1) / statusSteps.length) * 100 : 0;
-  const bookedSlotText = session?.appointmentAt ? new Date(session.appointmentAt).toLocaleString() : 'Walk-in session';
-  const currentStageLabel = session ? statusSteps[Math.max(activeStep, 0)] : 'REGISTERED';
-  const customerProfile = session?.customerProfile;
-  const recentSessions = session?.recentSessions ?? [];
-
-  const nextAction = useMemo(() => {
-    if (!session) return 'We are preparing your live wash tracking details.';
-    switch (session.status) {
-      case 'REGISTERED':
-        return 'Your vehicle is checked in and queued for wash lane handling.';
-      case 'WASHING':
-        return 'The exterior wash is underway. Keep this page open for live updates.';
-      case 'INTERIOR':
-        return 'Interior detailing is in progress. The next stop is final inspection.';
-      case 'INSPECTION':
-        return 'Final inspection is ready. Review the handoff and sign when the team prompts you.';
-      case 'COMPLETED':
-        return session.paid
-          ? 'Everything is complete and paid. The vehicle is ready for collection.'
-          : 'Your wash is complete. Payment is the final step before release.';
-      default:
-        return 'Stay on this page for the latest session updates.';
-    }
-  }, [session]);
-
-  const recommendedCard = useMemo(() => {
-    if (!session) return { title: 'Preparing your session', body: 'We are connecting your booking to the live wash board.' };
-    if (session.status === 'INSPECTION') {
-      return { title: 'Inspection approval', body: 'Use the signature action below once the team confirms the vehicle is ready for final handoff.' };
-    }
-    if (session.status === 'COMPLETED' && !session.paid) {
-      return { title: 'Payment ready', body: 'Complete payment now so the team can release the vehicle immediately.' };
-    }
-    if (session.status === 'COMPLETED' && session.paid) {
-      return { title: 'Ready for pickup', body: 'Everything is complete and paid. Keep the portal open in case you need to reference the completed session.' };
-    }
-    return { title: 'No action needed yet', body: 'The operations team is still working through the current stage. The portal will refresh automatically.' };
-  }, [session]);
-
-  const loyaltySummary = useMemo(() => {
-    if (!customerProfile) {
-      return {
-        tier: 'Starter',
-        title: 'Your loyalty profile is warming up',
-        body: 'Complete this visit and your customer profile will start building perks, points, and faster repeat bookings.',
-        progressToNext: 0,
-        nextTierLabel: 'Silver',
-      };
-    }
-
-    const visits = customerProfile.totalVisits ?? 0;
-    const tier = customerProfile.loyaltyTier ?? 'Starter';
-    const thresholds = [
-      { tier: 'Starter', next: 'Silver', floor: 0, ceiling: 3 },
-      { tier: 'Silver', next: 'Gold', floor: 3, ceiling: 6 },
-      { tier: 'Gold', next: 'Platinum', floor: 6, ceiling: 12 },
-      { tier: 'Platinum', next: 'Elite retention', floor: 12, ceiling: 12 },
-    ];
-    const currentThreshold = thresholds.find((item) => item.tier === tier) ?? thresholds[0];
-    const progressToNext =
-      currentThreshold.ceiling === currentThreshold.floor
-        ? 100
-        : Math.min(100, ((visits - currentThreshold.floor) / (currentThreshold.ceiling - currentThreshold.floor)) * 100);
-
-    return {
-      tier,
-      title: tier === 'Platinum' ? 'Top-tier returning customer' : `${tier} loyalty tier unlocked`,
-      body:
-        tier === 'Platinum'
-          ? 'You are in the highest customer tier right now. Priority-ready service and repeat-booking confidence are already built into your profile.'
-          : `You have ${customerProfile.loyaltyPoints ?? 0} loyalty points. Keep booking with the same phone number to move toward ${currentThreshold.next}.`,
-      progressToNext,
-      nextTierLabel: currentThreshold.next,
-    };
-  }, [customerProfile]);
-
-  const messageTimeline = useMemo(() => {
+  const nextActions = useMemo(() => {
     if (!session) return [];
 
-    const items = [
-      {
-        id: 'booking',
-        title: 'Booking confirmed',
-        body: `Your ${session.servicePackage} booking for ${session.registrationNumber} was accepted at ${new Date(session.createdAt).toLocaleString()}.`,
-        time: session.createdAt,
-        tone: 'success' as const,
-      },
-      {
-        id: 'arrival',
-        title: 'Arrival plan locked in',
-        body: session.appointmentAt
-          ? `Your arrival slot is ${new Date(session.appointmentAt).toLocaleString()}. Arrive close to that time for the smoothest handoff.`
-          : 'This session is marked as a walk-in. The team will work it into the live queue as soon as possible.',
-        time: session.appointmentAt ?? session.registeredAt,
-        tone: 'info' as const,
-      },
-      {
-        id: 'washing',
-        title: session.washingStartedAt ? 'Wash lane started' : 'Wash lane pending',
-        body: session.washingStartedAt
-          ? `The wash team started work at ${new Date(session.washingStartedAt).toLocaleTimeString()}.`
-          : 'The car is waiting for lane handoff. You do not need to do anything yet.',
-        time: session.washingStartedAt ?? session.updatedAt,
-        tone: session.washingStartedAt ? ('success' as const) : ('muted' as const),
-      },
-      {
-        id: 'interior',
-        title: session.interiorStartedAt ? 'Interior detailing active' : 'Interior queue standing by',
-        body: session.interiorStartedAt
-          ? `Interior detailing moved live at ${new Date(session.interiorStartedAt).toLocaleTimeString()}.`
-          : 'Interior work will begin automatically after wash lane completion.',
-        time: session.interiorStartedAt ?? session.updatedAt,
-        tone: session.interiorStartedAt ? ('success' as const) : ('muted' as const),
-      },
-      {
-        id: 'inspection',
-        title: session.inspectionStartedAt ? 'Inspection handoff ready' : 'Inspection not started yet',
-        body: session.inspectionStartedAt
-          ? 'The team is completing final checks. Stay nearby in case signature approval is requested.'
-          : 'Once the detailing team finishes, inspection and approval will happen here in the portal.',
-        time: session.inspectionStartedAt ?? session.updatedAt,
-        tone: session.inspectionStartedAt ? ('warning' as const) : ('muted' as const),
-      },
-      {
-        id: 'payment',
-        title: session.paid ? 'Payment received' : session.status === 'COMPLETED' ? 'Payment pending' : 'Payment will open after completion',
-        body: session.paid
-          ? 'Payment has been recorded successfully. The team can release the vehicle.'
-          : session.status === 'COMPLETED'
-            ? 'The vehicle is complete. Finish payment in this portal to close the session.'
-            : 'A payment action will appear automatically once the wash is complete.',
-        time: session.completedAt ?? session.updatedAt,
-        tone: session.paid ? ('success' as const) : session.status === 'COMPLETED' ? ('warning' as const) : ('muted' as const),
-      },
+    const actions = [
+      `Branch: ${session.branchName}`,
+      `Arrival: ${appointmentText}`,
+      `Service: ${session.servicePackage}`,
+      session.paid ? 'Payment received' : 'Payment pending',
     ];
 
-    return items.slice().reverse();
-  }, [session]);
+    if (session.status === 'INSPECTION') {
+      actions.unshift('Signature may be required before handoff');
+    }
 
-  const savingsMessage = useMemo(() => {
-    if (!customerProfile) {
-      return 'Use the same phone number for future bookings so your visits and loyalty progress stay connected.';
-    }
-    if (customerProfile.loyaltyTier === 'Platinum') {
-      return 'You are already in the top loyalty band. Keep the same phone number on every visit to preserve your premium customer history.';
-    }
-    return `You have ${customerProfile.loyaltyPoints ?? 0} points across ${customerProfile.totalVisits ?? 0} completed visit(s).`;
-  }, [customerProfile]);
+    return actions;
+  }, [appointmentText, session]);
+
+  const trackingStages = useMemo(
+    () =>
+      !session
+        ? []
+        : statusOrder.map((status, index) => {
+        const currentIndex = statusOrder.indexOf(session.status);
+        return {
+          status,
+          title: formatStage(status),
+          active: currentIndex === index,
+          complete: currentIndex > index,
+          time:
+            status === 'REGISTERED'
+              ? session.registeredAt
+              : status === 'WASHING'
+                ? session.washingStartedAt
+                : status === 'INTERIOR'
+                ? session.interiorStartedAt
+                : status === 'INSPECTION'
+                  ? session.inspectionStartedAt
+                  : session.completedAt,
+        };
+      }),
+    [session],
+  );
+
+  const savedVehicles = useMemo(() => session?.savedVehicles ?? [], [session?.savedVehicles]);
+  const notifications = useMemo(() => session?.notifications ?? [], [session?.notifications]);
+  const recentSessions = useMemo(() => session?.recentSessions ?? [], [session?.recentSessions]);
+  const loyaltyTier = session?.customerProfile?.loyaltyTier ?? 'Starter';
+  const loyaltyPoints = session?.customerProfile?.loyaltyPoints ?? 0;
+  const nextTierThreshold = loyaltyTier === 'Starter' ? 30 : loyaltyTier === 'Silver' ? 60 : loyaltyTier === 'Gold' ? 120 : loyaltyPoints;
+  const loyaltyProgress = nextTierThreshold === loyaltyPoints ? 100 : Math.min(100, Math.round((loyaltyPoints / nextTierThreshold) * 100));
+
+  const handleVehicleRebook = (
+    registrationNumber: string,
+    vehicleType?: string,
+    servicePackage?: string,
+    preferredAddOnServices?: string[],
+  ) => {
+    if (!session) return;
+    const params = new URLSearchParams({
+      branchId: String(session.branchId),
+      reg: registrationNumber,
+      name: session.customerName,
+      phone: session.customerPhone ?? '',
+      email: session.customerEmail ?? '',
+      vehicleType: vehicleType ?? '',
+      servicePackage: servicePackage ?? '',
+    });
+    (preferredAddOnServices ?? []).forEach((addOn) => params.append('addOn', addOn));
+    navigate(`/portal/book?${params.toString()}`);
+  };
 
   if (loading && !session) {
     return (
-      <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '100vh', bgcolor: '#08111c' }}>
-        <CircularProgress sx={{ color: '#f0b44c' }} />
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default' }}>
+        <CircularProgress sx={{ color: theme.palette.primary.main }} />
       </Box>
     );
   }
 
   if (error && !session) {
     return (
-      <Container maxWidth="sm" sx={{ mt: 8 }}>
+      <Container maxWidth="sm" sx={{ py: 8 }}>
         <Alert severity="error" sx={{ borderRadius: 3 }}>{error}</Alert>
-        <Button fullWidth onClick={() => window.location.reload()} sx={{ mt: 2 }}>
-          Retry
-        </Button>
       </Container>
     );
   }
@@ -325,468 +428,911 @@ const CustomerPortalPage: React.FC = () => {
   if (!session) return null;
 
   return (
-    <Box sx={{ minHeight: '100vh', color: 'white', py: { xs: 4, md: 6 }, background: 'linear-gradient(180deg, #101519 0%, #12181d 100%)' }}>
-      <Container maxWidth="xl">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Stack spacing={3}>
-            <Paper sx={heroPaperSx}>
-              <Stack spacing={3}>
-                <Stack direction={{ xs: 'column', xl: 'row' }} justifyContent="space-between" spacing={3}>
-                  <Box>
-                    <Chip label="Live Customer Portal" sx={portalChipSx} />
-                    <Typography variant="h2" sx={{ mt: 2.5, fontWeight: 900, letterSpacing: -1.4, lineHeight: 1.03 }}>
-                      {session.registrationNumber}
-                    </Typography>
-                    <Typography sx={{ mt: 1.5, color: 'rgba(154,168,176,0.82)', fontSize: '1rem' }}>
-                      {session.customerName} - {session.vehicleType} - {session.servicePackage}
-                    </Typography>
-                  </Box>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary' }}>
+      <CustomerSessionTimeoutGuard />
+      <Box
+        sx={{
+          minHeight: { xs: 520, md: 620 },
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'stretch',
+          backgroundColor: '#12100f',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `linear-gradient(90deg, rgba(18,16,15,0.74) 0%, rgba(18,16,15,0.56) 38%, rgba(18,16,15,0.2) 100%), url("${heroImage}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center 42%',
+          }}
+        />
+        <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1, py: { xs: 3, md: 5 } }}>
+          <Stack spacing={6}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <Box sx={{ width: 42, height: 42, borderRadius: '50%', bgcolor: '#e36b2c', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800 }}>
+                  S
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#fff8f1', fontWeight: 700, fontSize: '1.1rem' }}>Spark Wash Portal</Typography>
+                  <Typography sx={{ color: 'rgba(255,244,233,0.7)', fontSize: '0.92rem' }}>Live customer access</Typography>
+                </Box>
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
+                <Button variant="outlined" startIcon={<ContentCopy />} onClick={handleCopyPortalLink} sx={heroGhostButtonSx}>
+                  {copied ? 'Link copied' : 'Copy link'}
+                </Button>
+                <Button variant="contained" startIcon={refreshing ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <Refresh />} onClick={() => fetchSession(true)} sx={heroButtonSx}>
+                  Refresh
+                </Button>
+              </Stack>
+            </Stack>
 
-                  <Stack spacing={1.25} alignItems={{ xs: 'flex-start', xl: 'flex-end' }}>
-                    <Chip label={session.status} color={session.status === 'COMPLETED' ? 'success' : 'primary'} sx={{ fontWeight: 800, borderRadius: 2 }} />
-                    <Button startIcon={refreshing ? <CircularProgress size={16} /> : <RefreshIcon />} onClick={() => fetchSession(true)} disabled={refreshing} sx={{ color: '#67e8f9' }}>
-                      Refresh now
-                    </Button>
-                    <Button startIcon={<CopyIcon />} onClick={handleCopyPortalLink} sx={{ color: copied ? '#86efac' : 'rgba(226,232,240,0.88)' }}>
-                      {copied ? 'Portal link copied' : 'Copy portal link'}
+            <Grid2 container spacing={4} alignItems="center">
+              <Grid2 size={{ xs: 12, lg: 7 }}>
+                <Stack spacing={2.5}>
+                  <Chip label="Car Wash Delivery" sx={heroTagSx} />
+                  <Typography variant="h1" sx={{ color: '#fff8f1', maxWidth: 760, lineHeight: 0.95 }}>
+                    Your wash session, delivered with the same premium feel as the booking site
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,244,233,0.78)', maxWidth: 620, fontSize: '1.04rem', lineHeight: 1.7 }}>
+                    Track your vehicle, confirm the next steps, handle payment, and keep your live service link all from one customer page.
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
+                    <Chip icon={<DirectionsCar sx={{ color: '#fff' }} />} label={session.registrationNumber} sx={heroChipSx} />
+                    <Chip icon={<AccessTime sx={{ color: '#fff' }} />} label={appointmentText} sx={heroChipSx} />
+                    <Chip icon={<Verified sx={{ color: '#fff' }} />} label={formatStage(session.status)} sx={heroChipSx} />
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    {!session.paid && !isExpired && (
+                      <Button variant="contained" startIcon={<Payment />} onClick={openPaymentDialog} sx={heroButtonSx}>
+                        Pay now
+                      </Button>
+                    )}
+                    {session.status === 'INSPECTION' && !isExpired && (
+                      <Button variant="outlined" startIcon={<TaskAlt />} onClick={() => setShowSignature(true)} sx={heroGhostButtonSx}>
+                        Sign approval
+                      </Button>
+                    )}
+                    <Button variant="outlined" onClick={handleRepeatBooking} sx={heroGhostButtonSx}>
+                      Book again
                     </Button>
                   </Stack>
                 </Stack>
+              </Grid2>
 
-                <Alert severity={session.status === 'COMPLETED' ? 'success' : 'info'} sx={{ borderRadius: 3 }}>
-                  {nextAction}
-                </Alert>
+              <Grid2 size={{ xs: 12, lg: 5 }}>
+                <Paper sx={heroSessionCardSx}>
+                  <Stack spacing={2.5}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography sx={{ fontWeight: 800, fontSize: '1.12rem' }}>Current session</Typography>
+                      <Chip label={session.paid ? 'Paid' : 'Open'} sx={session.paid ? paidChipSx : openChipSx} />
+                    </Stack>
+                    <Typography variant="h3" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                      {session.servicePackage}
+                    </Typography>
+                    <Typography sx={{ color: 'text.secondary' }}>{stageCopy}</Typography>
+                    {isExpired && (
+                      <Alert severity="warning" sx={{ borderRadius: 3 }}>
+                        This booking expired after 24 hours past the selected arrival time. Please book a new session to continue.
+                      </Alert>
+                    )}
+                    <Box sx={{ height: 10, borderRadius: 999, bgcolor: alpha(theme.palette.primary.main, 0.14), overflow: 'hidden' }}>
+                      <Box sx={{ width: `${Math.max(progress, 8)}%`, height: '100%', bgcolor: 'primary.main', borderRadius: 999, transition: 'width 0.3s ease' }} />
+                    </Box>
+                    <Grid2 container spacing={1.5}>
+                      <Grid2 size={{ xs: 6 }}>
+                        <InfoTile label="Customer" value={session.customerName} />
+                      </Grid2>
+                      <Grid2 size={{ xs: 6 }}>
+                        <InfoTile label="Vehicle" value={session.vehicleType} />
+                      </Grid2>
+                          <Grid2 size={{ xs: 6 }}>
+                            <InfoTile label="Branch" value={session.branchName} />
+                          </Grid2>
+                          <Grid2 size={{ xs: 6 }}>
+                            <InfoTile label="Price" value={formatCurrency(session.price ?? 45)} />
+                          </Grid2>
+                          <Grid2 size={{ xs: 12 }}>
+                            <InfoTile label="Add-ons" value={session.addOnServices?.length ? session.addOnServices.join(', ') : 'None selected'} />
+                          </Grid2>
+                          {session.latestPayment && (
+                            <Grid2 size={{ xs: 12 }}>
+                              <InfoTile
+                                label="Last payment"
+                                value={`${session.latestPayment.paymentMethod.replace('_', ' ')} • ${new Date(session.latestPayment.paidAt).toLocaleString()}`}
+                              />
+                            </Grid2>
+                          )}
+                        </Grid2>
+                      </Stack>
+                    </Paper>
+              </Grid2>
+            </Grid2>
+          </Stack>
+        </Container>
+      </Box>
 
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
-                  <Chip icon={<SlotIcon />} label={bookedSlotText} sx={featureChipSx} />
-                  <Chip icon={<ClockIcon />} label={`Workflow progress ${Math.round(progress)}%`} sx={featureChipSx} />
-                  <Chip icon={<TaskAltIcon />} label={session.paid ? 'Payment complete' : 'Payment pending'} sx={featureChipSx} />
-                  <Chip icon={<LoyaltyIcon />} label={`${loyaltySummary.tier} customer profile`} sx={featureChipSx} />
+      <Container maxWidth="xl" sx={{ py: { xs: 5, md: 7 } }}>
+        <Stack spacing={6}>
+          {error && <Alert severity="error" sx={{ borderRadius: 3 }}>{error}</Alert>}
+
+          <Grid2 container spacing={3}>
+            {pricingCards.map((card) => (
+              <Grid2 key={card.title} size={{ xs: 12, md: 4 }}>
+                <Paper sx={pricingCardSx}>
+                  <Typography sx={{ color: '#7d7066', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.74rem' }}>
+                    {card.title}
+                  </Typography>
+                  <Typography sx={{ mt: 1.2, fontSize: '2.6rem', fontWeight: 800, lineHeight: 1 }}>
+                    {card.price}
+                  </Typography>
+                  <Typography sx={{ mt: 0.8, color: '#7d7066' }}>{card.detail}</Typography>
+                  {session.vehicleType.toLowerCase().includes(card.title.toLowerCase().split(' ')[0]) && (
+                    <Chip label="Closest match" sx={{ mt: 2, bgcolor: 'rgba(227,107,44,0.1)', color: '#9e4c24' }} />
+                  )}
+                </Paper>
+              </Grid2>
+            ))}
+          </Grid2>
+
+          <Grid2 container spacing={4}>
+            <Grid2 size={{ xs: 12, lg: 7 }}>
+              <Stack spacing={3}>
+                <Typography variant="h3" sx={{ fontWeight: 700 }}>
+                  Track your session
+                </Typography>
+                <Typography sx={{ color: 'text.secondary', maxWidth: 760 }}>
+                  Follow each stage of your wash in real time, see what has already been completed, and know exactly what comes next.
+                </Typography>
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2.2}>
+                    {trackingStages.map((item, index) => (
+                      <Stack key={item.status} direction="row" spacing={2} alignItems="flex-start">
+                        <Stack alignItems="center" spacing={0.8}>
+                          <Box
+                            sx={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: '50%',
+                              display: 'grid',
+                              placeItems: 'center',
+                              bgcolor: item.complete || item.active ? 'primary.main' : alpha(theme.palette.common.white, 0.06),
+                              color: item.complete || item.active ? '#fffaf5' : 'text.secondary',
+                              border: `1px solid ${item.complete || item.active ? alpha(theme.palette.primary.main, 0.45) : theme.palette.divider}`,
+                            }}
+                          >
+                            {item.complete ? <CheckCircle sx={{ fontSize: 18 }} /> : <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{index + 1}</Typography>}
+                          </Box>
+                          {index < trackingStages.length - 1 && (
+                            <Box
+                              sx={{
+                                width: 2,
+                                flex: 1,
+                                minHeight: 28,
+                                bgcolor: item.complete ? alpha(theme.palette.primary.main, 0.42) : theme.palette.divider,
+                              }}
+                            />
+                          )}
+                        </Stack>
+                        <Box sx={{ pt: 0.35 }}>
+                          <Typography sx={{ fontWeight: item.active ? 800 : 700, color: 'text.primary' }}>
+                            {item.title}
+                          </Typography>
+                          <Typography sx={{ color: item.active ? 'primary.main' : 'text.secondary', mt: 0.4 }}>
+                            {item.complete
+                              ? 'Completed'
+                              : item.active
+                                ? 'Currently in progress'
+                                : 'Waiting for this stage'}
+                            {item.time ? ` • ${new Date(item.time).toLocaleString()}` : ''}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Paper>
+                <Paper sx={sectionCardSx}>
+                  <Grid2 container spacing={2.5}>
+                    {nextActions.map((item) => (
+                      <Grid2 key={item} size={{ xs: 12, sm: 6 }}>
+                        <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                          <Box sx={{ mt: 0.2, width: 28, height: 28, borderRadius: '50%', bgcolor: 'rgba(227,107,44,0.1)', display: 'grid', placeItems: 'center' }}>
+                            <CheckCircle sx={{ color: '#e36b2c', fontSize: 18 }} />
+                          </Box>
+                          <Typography sx={{ color: 'text.primary' }}>{item}</Typography>
+                        </Stack>
+                      </Grid2>
+                    ))}
+                  </Grid2>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2.2}>
+                    <Stack direction="row" spacing={1.2} alignItems="center">
+                      <Box sx={sectionIconSx}>
+                        <DirectionsCar sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Saved vehicles
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          Jump back into booking with the vehicles you use most.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Grid2 container spacing={2}>
+                      {savedVehicles.length ? savedVehicles.map((vehicle) => (
+                        <Grid2 key={vehicle.registrationNumber} size={{ xs: 12, md: 6 }}>
+                          <Paper sx={savedVehicleCardSx}>
+                            <Stack spacing={1.3}>
+                              <Stack direction="row" justifyContent="space-between" spacing={1.5}>
+                                <Box>
+                                  <Typography sx={{ fontWeight: 800 }}>{vehicle.registrationNumber}</Typography>
+                                  <Typography sx={{ color: 'text.secondary', fontSize: '0.92rem' }}>
+                                    {vehicle.vehicleType || 'Vehicle on file'}
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  label={`${vehicle.totalSessions} visit${vehicle.totalSessions === 1 ? '' : 's'}`}
+                                  sx={{ bgcolor: 'rgba(227,107,44,0.12)', color: '#e9a37f', fontWeight: 700 }}
+                                />
+                              </Stack>
+                              <Typography sx={{ color: 'text.secondary', fontSize: '0.93rem' }}>
+                                Preferred wash: {vehicle.preferredServicePackage || 'Standard service'}
+                              </Typography>
+                              <Typography sx={{ color: 'text.secondary', fontSize: '0.9rem' }}>
+                                Last branch: {vehicle.lastBranchName || session.branchName} • {formatRelativeDate(vehicle.lastSeenAt)}
+                              </Typography>
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  onClick={() =>
+                                    handleVehicleRebook(
+                                      vehicle.registrationNumber,
+                                      vehicle.vehicleType,
+                                      vehicle.preferredServicePackage,
+                                      vehicle.preferredAddOnServices,
+                                    )
+                                  }
+                                  sx={compactCtaButtonSx}
+                                >
+                                  Rebook this vehicle
+                                </Button>
+                                {!!vehicle.preferredAddOnServices?.length && (
+                                  <Chip
+                                    label={vehicle.preferredAddOnServices.join(', ')}
+                                    sx={{ maxWidth: '100%', '& .MuiChip-label': { whiteSpace: 'normal' } }}
+                                  />
+                                )}
+                              </Stack>
+                            </Stack>
+                          </Paper>
+                        </Grid2>
+                      )) : (
+                        <Grid2 size={{ xs: 12 }}>
+                          <Typography sx={{ color: 'text.secondary' }}>
+                            Your saved vehicles will appear here after more bookings are completed.
+                          </Typography>
+                        </Grid2>
+                      )}
+                    </Grid2>
+                  </Stack>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                    Add-on services
+                  </Typography>
+                  <Grid2 container spacing={2}>
+                    {(session.addOnServices?.length ? session.addOnServices : ['No add-on services selected']).map((item) => (
+                      <Grid2 key={item} size={{ xs: 12, sm: 6 }}>
+                        <Paper sx={extraItemSx}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <LocalOffer sx={{ color: 'primary.main', fontSize: 18 }} />
+                            <Typography sx={{ fontWeight: 600 }}>{item}</Typography>
+                          </Stack>
+                        </Paper>
+                      </Grid2>
+                    ))}
+                  </Grid2>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2}>
+                    <Stack direction="row" spacing={1.2} alignItems="center">
+                      <Box sx={sectionIconSx}>
+                        <History sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Wash history
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          Your recent completed and in-progress sessions.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack spacing={1.4}>
+                      {recentSessions.length ? recentSessions.map((item) => (
+                        <Paper key={item.sessionId} sx={historyCardSx}>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5}>
+                            <Box>
+                              <Typography sx={{ fontWeight: 700 }}>
+                                {item.registrationNumber} • {item.servicePackage}
+                              </Typography>
+                              <Typography sx={{ color: 'text.secondary', fontSize: '0.92rem', mt: 0.4 }}>
+                                {item.branchName || session.branchName} • {item.vehicleType || 'Vehicle'} • {formatRelativeDate(item.completedAt || item.createdAt)}
+                              </Typography>
+                              {!!item.addOnServices?.length && (
+                                <Typography sx={{ color: 'text.secondary', fontSize: '0.88rem', mt: 0.65 }}>
+                                  Extras: {item.addOnServices.join(', ')}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Stack alignItems={{ xs: 'flex-start', sm: 'flex-end' }} spacing={0.8}>
+                              <Chip label={formatStage(item.status)} sx={historyStatusChipSx} />
+                              <Typography sx={{ fontWeight: 700 }}>
+                                {formatCurrency(item.price)}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      )) : (
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          More wash history will appear here as you complete more sessions.
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Paper>
+              </Stack>
+            </Grid2>
+
+            <Grid2 size={{ xs: 12, lg: 5 }}>
+              <Stack spacing={3}>
+                <Paper sx={sectionCardSx}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                    Customer actions
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    {!session.paid && (
+                      <Button variant="contained" startIcon={<Payment />} onClick={openPaymentDialog} sx={ctaButtonSx}>
+                        Complete payment
+                      </Button>
+                    )}
+                    {session.status === 'INSPECTION' && (
+                      <Button variant="outlined" startIcon={<Verified />} onClick={() => setShowSignature(true)} sx={secondaryButtonSx}>
+                        Open signature approval
+                      </Button>
+                    )}
+                    <Button variant="outlined" startIcon={<ContentCopy />} onClick={handleCopyPortalLink} sx={secondaryButtonSx}>
+                      {copied ? 'Portal link copied' : 'Copy session link'}
+                    </Button>
+                    <Button variant="outlined" startIcon={<DirectionsCar />} onClick={handleRepeatBooking} sx={secondaryButtonSx}>
+                      Book this wash again
+                    </Button>
+                  </Stack>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2}>
+                    <Stack direction="row" spacing={1.2} alignItems="center">
+                      <Box sx={sectionIconSx}>
+                        <Loyalty sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Loyalty and rewards
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          Track your tier, points, and progress to the next reward level.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Paper sx={loyaltyCardSx}>
+                      <Stack spacing={1.8}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Stars sx={{ color: '#f2b24f' }} />
+                            <Typography sx={{ fontWeight: 800 }}>{loyaltyTier} member</Typography>
+                          </Stack>
+                          <Chip label={`${loyaltyPoints} pts`} sx={{ bgcolor: 'rgba(242,178,79,0.12)', color: '#ffd58b', fontWeight: 700 }} />
+                        </Stack>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          {loyaltyTier === 'Platinum'
+                            ? 'You are already at the highest loyalty tier.'
+                            : `${Math.max(0, nextTierThreshold - loyaltyPoints)} more points to reach the next tier.`}
+                        </Typography>
+                        <Box sx={{ height: 10, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                          <Box sx={{ width: `${Math.max(loyaltyProgress, 8)}%`, height: '100%', bgcolor: '#f2b24f', borderRadius: 999 }} />
+                        </Box>
+                        <Grid2 container spacing={1.5}>
+                          <Grid2 size={{ xs: 6 }}>
+                            <InfoTile label="Visits" value={String(session.customerProfile?.totalVisits ?? 0)} />
+                          </Grid2>
+                          <Grid2 size={{ xs: 6 }}>
+                            <InfoTile label="Last vehicle" value={session.customerProfile?.lastVehicleRegistration || session.registrationNumber} />
+                          </Grid2>
+                        </Grid2>
+                      </Stack>
+                    </Paper>
+                  </Stack>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2}>
+                    <Stack direction="row" spacing={1.2} alignItems="center">
+                      <Box sx={sectionIconSx}>
+                        <NotificationsActive sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Notifications
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          Live customer-facing updates for this wash session.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack spacing={1.35}>
+                      {notifications.length ? notifications.map((item, index) => {
+                        const toneStyles = getNotificationToneStyles(item.tone);
+                        return (
+                          <Paper
+                            key={`${item.title}-${index}`}
+                            sx={{
+                              p: 1.8,
+                              borderRadius: 3,
+                              bgcolor: toneStyles.bg,
+                              border: `1px solid ${toneStyles.border}`,
+                              boxShadow: 'none',
+                            }}
+                          >
+                            <Stack spacing={0.5}>
+                              <Stack direction="row" justifyContent="space-between" spacing={2}>
+                                <Typography sx={{ fontWeight: 700, color: toneStyles.color }}>{item.title}</Typography>
+                                <Typography sx={{ color: 'text.secondary', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                                  {item.occurredAt ? new Date(item.occurredAt).toLocaleString() : 'Live'}
+                                </Typography>
+                              </Stack>
+                              <Typography sx={{ color: 'text.secondary', fontSize: '0.93rem', lineHeight: 1.55 }}>
+                                {item.body}
+                              </Typography>
+                            </Stack>
+                          </Paper>
+                        );
+                      }) : (
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          New session updates will appear here automatically.
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Stack spacing={2}>
+                    <Stack direction="row" spacing={1.2} alignItems="center">
+                      <Box sx={sectionIconSx}>
+                        <ChatBubbleOutline sx={{ color: '#e36b2c', fontSize: 18 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Message the team
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary' }}>
+                          Send questions or updates to staff for this wash session.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                      <Chip
+                        label={unreadStaffMessages ? `${unreadStaffMessages} unread staff message${unreadStaffMessages === 1 ? '' : 's'}` : 'No unread staff messages'}
+                        sx={{
+                          bgcolor: unreadStaffMessages ? 'rgba(227,107,44,0.14)' : 'rgba(255,255,255,0.06)',
+                          color: unreadStaffMessages ? '#ffb089' : 'text.secondary',
+                          fontWeight: 700,
+                        }}
+                      />
+                      {unreadStaffMessages > 0 && (
+                        <Button variant="text" onClick={markMessagesRead} sx={{ color: '#f3c49d' }}>
+                          Mark as read
+                        </Button>
+                      )}
+                    </Stack>
+                    <Paper sx={messageThreadSx}>
+                      <Stack spacing={1.2} divider={<Divider flexItem sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}>
+                        {messages.length ? messages.map((item) => {
+                          const isCustomer = item.senderType === 'CUSTOMER';
+                          return (
+                            <Stack key={item.id} spacing={0.7} alignItems={isCustomer ? 'flex-end' : 'flex-start'}>
+                              <Typography sx={{ color: 'text.secondary', fontSize: '0.78rem' }}>
+                                {item.senderName} • {new Date(item.createdAt).toLocaleString()}
+                              </Typography>
+                              <Box
+                                sx={{
+                                  maxWidth: '100%',
+                                  px: 1.5,
+                                  py: 1.1,
+                                  borderRadius: 2.5,
+                                  bgcolor: isCustomer ? 'rgba(227,107,44,0.16)' : 'rgba(255,255,255,0.05)',
+                                  border: `1px solid ${isCustomer ? 'rgba(227,107,44,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                                }}
+                              >
+                                <Typography sx={{ lineHeight: 1.6 }}>{item.message}</Typography>
+                              </Box>
+                            </Stack>
+                          );
+                        }) : (
+                          <Typography sx={{ color: 'text.secondary' }}>
+                            No messages yet. Start a conversation with the team here.
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Paper>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={5}
+                      label="Message staff"
+                      value={messageDraft}
+                      onChange={(event) => setMessageDraft(event.target.value)}
+                      placeholder="Ask a question, say you’re arriving, or request an update."
+                    />
+                    <Button
+                      variant="contained"
+                      startIcon={<ChatBubbleOutline />}
+                      onClick={handleSendMessage}
+                      disabled={sendingMessage || !messageDraft.trim()}
+                      sx={ctaButtonSx}
+                    >
+                      {sendingMessage ? 'Sending...' : 'Send message'}
+                    </Button>
+                  </Stack>
+                </Paper>
+
+                <Paper sx={sectionCardSx}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                    Contact
+                  </Typography>
+                  <Stack spacing={1.4}>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <Email sx={{ color: '#e36b2c' }} />
+                      <Typography>info@sparkcarwash.us</Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <DirectionsCar sx={{ color: '#e36b2c' }} />
+                      <Typography>{session.branchName}</Typography>
+                    </Stack>
+                    <Typography sx={{ color: 'text.secondary' }}>
+                      Keep this page open for live updates. If the team asks for confirmation or payment, use the buttons above.
+                    </Typography>
+                  </Stack>
+                </Paper>
+              </Stack>
+            </Grid2>
+          </Grid2>
+
+          {showSignature && (
+            <Paper sx={signatureCardSx}>
+              <Stack spacing={2}>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  Signature approval
+                </Typography>
+                <Typography sx={{ color: 'text.secondary' }}>
+                  Sign below when the team requests final approval for release.
+                </Typography>
+                <Box sx={{ bgcolor: theme.palette.background.paper, borderRadius: 2.5, overflow: 'hidden', border: `1px solid ${theme.palette.divider}` }}>
+                  <SignaturePad
+                    ref={sigPad}
+                    canvasProps={{ width: 860, height: 220, style: { width: '100%', height: 220, display: 'block' } }}
+                  />
+                </Box>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <Button variant="contained" onClick={handleSign} sx={ctaButtonSx}>
+                    Save signature
+                  </Button>
+                  <Button variant="outlined" onClick={() => sigPad.current?.clear()} sx={secondaryButtonSx}>
+                    Clear
+                  </Button>
+                  <Button variant="text" onClick={() => setShowSignature(false)} sx={{ color: 'text.secondary', width: 'fit-content' }}>
+                    Close
+                  </Button>
                 </Stack>
               </Stack>
             </Paper>
+          )}
 
-            <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
-              <Stack flex={1.1} spacing={3}>
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.5}>
-                    <SectionHeading icon={<StatusIcon sx={{ color: '#67e8f9' }} />} title="Wash progress" />
-                    <Box sx={{ display: 'grid', placeItems: 'center', py: 1 }}>
-                      <Box sx={progressOrbitSx}>
-                        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Number.POSITIVE_INFINITY, duration: 9, ease: 'linear' }} style={{ position: 'absolute', inset: 0 }}>
-                          <Box sx={{ position: 'absolute', top: -7, left: '50%', width: 14, height: 14, borderRadius: 999, bgcolor: '#67e8f9', boxShadow: '0 0 18px rgba(103,232,249,0.75)', transform: 'translateX(-50%)' }} />
-                        </motion.div>
-                        <Box sx={{ textAlign: 'center', zIndex: 1 }}>
-                          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.55)', letterSpacing: 1.4 }}>
-                            CURRENT STAGE
-                          </Typography>
-                          <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 900 }}>
-                            {currentStageLabel}
-                          </Typography>
-                          <Typography sx={{ mt: 0.5, color: '#67e8f9', fontWeight: 700 }}>
-                            {Math.round(progress)}% complete
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    <Paper sx={progressCardSx}>
-                      <Box sx={{ height: 10, borderRadius: 999, bgcolor: 'rgba(148,163,184,0.16)', overflow: 'hidden' }}>
-                        <Box sx={{ width: `${Math.max(progress, 8)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #67e8f9 0%, #22d3ee 100%)', boxShadow: '0 0 14px rgba(34,211,238,0.24)', transition: 'width 0.4s ease' }} />
-                      </Box>
-                      <Typography sx={{ mt: 1.25, color: 'rgba(226,232,240,0.66)' }}>
-                        {Math.round(progress)}% through the full wash workflow
-                      </Typography>
-                    </Paper>
-
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} useFlexGap flexWrap="wrap">
-                      {statusSteps.map((step, index) => {
-                        const isComplete = index < activeStep;
-                        const isCurrent = index === activeStep;
-                        return (
-                          <Chip key={step} label={step} sx={{ bgcolor: isCurrent ? 'rgba(103,232,249,0.16)' : isComplete ? 'rgba(52,211,153,0.14)' : 'rgba(255,255,255,0.05)', color: isCurrent ? '#67e8f9' : isComplete ? '#86efac' : 'rgba(226,232,240,0.66)', border: isCurrent ? '1px solid rgba(103,232,249,0.24)' : isComplete ? '1px solid rgba(134,239,172,0.22)' : '1px solid rgba(148,163,184,0.12)', fontWeight: 700 }} />
-                        );
-                      })}
-                    </Stack>
-
-                    <Stepper activeStep={activeStep} alternativeLabel sx={{ '& .MuiStepLabel-label': { color: 'rgba(226,232,240,0.55)', fontSize: '0.76rem' }, '& .MuiStepLabel-label.Mui-active': { color: '#67e8f9', fontWeight: 700 }, '& .MuiStepLabel-label.Mui-completed': { color: '#38bdf8' }, '& .MuiStepIcon-root': { color: 'rgba(148,163,184,0.18)' }, '& .MuiStepIcon-root.Mui-active': { color: '#67e8f9' }, '& .MuiStepIcon-root.Mui-completed': { color: '#38bdf8' } }}>
-                      {statusSteps.map((label) => (
-                        <Step key={label}>
-                          <StepLabel>{label}</StepLabel>
-                        </Step>
-                      ))}
-                    </Stepper>
+          <Dialog
+            open={showPaymentDialog}
+            onClose={() => setShowPaymentDialog(false)}
+            fullWidth
+            maxWidth="sm"
+            PaperProps={{
+              sx: {
+                bgcolor: 'rgba(18,13,10,0.96)',
+                border: '1px solid rgba(255,244,233,0.14)',
+                borderRadius: 4,
+                backdropFilter: 'blur(14px)',
+              }
+            }}
+          >
+            <DialogTitle sx={{ fontWeight: 700 }}>Complete payment</DialogTitle>
+            <DialogContent dividers sx={{ borderColor: 'rgba(255,244,233,0.12)' }}>
+              <Stack spacing={2}>
+                <Typography sx={{ color: 'text.secondary' }}>
+                  Choose how you paid so the branch and your receipt both show the correct payment details.
+                </Typography>
+                <Paper sx={paymentSummaryCardSx}>
+                  <Stack spacing={0.7}>
+                    <Typography sx={{ fontWeight: 700 }}>{session.servicePackage}</Typography>
+                    <Typography sx={{ color: 'text.secondary' }}>Amount: {formatCurrency(session.price)}</Typography>
+                    <Typography sx={{ color: 'text.secondary' }}>Vehicle: {session.registrationNumber}</Typography>
                   </Stack>
                 </Paper>
-
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.5}>
-                    <SectionHeading icon={<MessageIcon sx={{ color: '#fbbf24' }} />} title="SMS-style updates" />
-                    <Typography sx={{ color: 'rgba(226,232,240,0.66)' }}>
-                      A clean message center for the same updates customers usually expect over SMS.
-                    </Typography>
-                    <Stack spacing={1.4}>
-                      {messageTimeline.map((message) => (
-                        <MessageCard key={message.id} {...message} />
-                      ))}
-                    </Stack>
-                  </Stack>
-                </Paper>
-
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.5}>
-                    <SectionHeading icon={<ClockIcon sx={{ color: '#67e8f9' }} />} title="Recommended action" />
-                    <Paper sx={focusCardSx}>
-                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                        {recommendedCard.title}
-                      </Typography>
-                      <Typography sx={{ mt: 1, color: 'rgba(226,232,240,0.7)' }}>
-                        {recommendedCard.body}
-                      </Typography>
-                    </Paper>
-
-                    {session.status === 'INSPECTION' && !signing && (
-                      <Button variant="outlined" fullWidth startIcon={<SignIcon />} onClick={() => setSigning(true)} sx={secondaryActionSx}>
-                        Sign to approve inspection
-                      </Button>
-                    )}
-
-                    {session.status === 'COMPLETED' && !session.paid && (
-                      <Button variant="contained" fullWidth size="large" startIcon={<PaymentIcon />} onClick={handlePayment} sx={primaryActionSx}>
-                        Proceed to payment
-                      </Button>
-                    )}
-
-                    {session.paid && (
-                      <Alert severity="success" icon={<CheckCircleIcon />} sx={{ borderRadius: 3, bgcolor: 'rgba(16,185,129,0.1)', color: '#d1fae5' }}>
-                        Your wash session is complete and paid. Thank you for choosing RinseFlow.
-                      </Alert>
-                    )}
-
-                    {!session.paid && session.status !== 'INSPECTION' && session.status !== 'COMPLETED' && (
-                      <Alert severity="info" sx={{ borderRadius: 3 }}>
-                        No action is needed from you yet. The operations team is still working through the current stage.
-                      </Alert>
-                    )}
-
-                    {error && <Alert severity="error" sx={{ borderRadius: 3 }}>{error}</Alert>}
-                  </Stack>
-                </Paper>
-              </Stack>
-
-              <Stack flex={0.9} spacing={3}>
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.5}>
-                    <SectionHeading icon={<SlotIcon sx={{ color: '#86efac' }} />} title="Session snapshot" />
-                    <MetricGrid items={[{ label: 'Branch', value: session.branchName }, { label: 'Arrival slot', value: bookedSlotText }, { label: 'Service', value: session.servicePackage }, { label: 'Price', value: `$${session.price?.toFixed(2) ?? '0.00'}` }, { label: 'Payment', value: session.paid ? 'Paid' : 'Pending' }, { label: 'Operator', value: session.operatorName ?? 'Pending assignment' }]} />
-                    {lastUpdated && (
-                      <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.46)' }}>
-                        Last updated at {lastUpdated.toLocaleTimeString()}
-                      </Typography>
-                    )}
-                  </Stack>
-                </Paper>
-
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.25}>
-                    <SectionHeading icon={<LoyaltyIcon sx={{ color: '#f59e0b' }} />} title="Loyalty and returning-customer perks" />
-                    <Paper sx={loyaltyHeroSx}>
-                      <Stack direction="row" justifyContent="space-between" spacing={2} alignItems="center">
-                        <Box>
-                          <Typography variant="overline" sx={{ letterSpacing: 1.5, color: 'rgba(255,255,255,0.6)' }}>
-                            {loyaltySummary.tier} Tier
+                <TextField
+                  select
+                  fullWidth
+                  label="Payment method"
+                  value={paymentMethod}
+                  onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
+                  SelectProps={{ MenuProps: customerSelectMenuProps }}
+                >
+                  <MenuItem value="MOBILE_MONEY">Mobile Money</MenuItem>
+                  <MenuItem value="CARD">Card</MenuItem>
+                  <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+                  <MenuItem value="CASH">Cash</MenuItem>
+                </TextField>
+                <TextField
+                  fullWidth
+                  label="Reference number"
+                  value={paymentReference}
+                  onChange={(event) => setPaymentReference(event.target.value)}
+                  placeholder="Transaction ID or confirmation number"
+                />
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  maxRows={5}
+                  label="Payment notes"
+                  value={paymentNotes}
+                  onChange={(event) => setPaymentNotes(event.target.value)}
+                  placeholder="Optional note for the branch"
+                />
+                {!!session.paymentHistory?.length && (
+                  <Paper sx={paymentSummaryCardSx}>
+                    <Stack spacing={1.1}>
+                      <Typography sx={{ fontWeight: 700 }}>Payment history</Typography>
+                      {session.paymentHistory.map((item) => (
+                        <Box key={item.id}>
+                          <Typography sx={{ fontWeight: 600 }}>
+                            {item.paymentMethod.replace('_', ' ')} • {formatCurrency(item.amount)}
                           </Typography>
-                          <Typography variant="h5" sx={{ fontWeight: 900 }}>
-                            {loyaltySummary.title}
+                          <Typography sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
+                            {new Date(item.paidAt).toLocaleString()}{item.referenceNumber ? ` • ${item.referenceNumber}` : ''}
                           </Typography>
                         </Box>
-                        <Chip icon={<OfferIcon />} label={`${customerProfile?.loyaltyPoints ?? 0} pts`} sx={loyaltyChipSx} />
-                      </Stack>
-                      <Typography sx={{ mt: 1.25, color: 'rgba(255,255,255,0.78)' }}>
-                        {loyaltySummary.body}
-                      </Typography>
-                      <Box sx={{ mt: 2 }}>
-                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                            Progress to {loyaltySummary.nextTierLabel}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#fde68a', fontWeight: 700 }}>
-                            {Math.round(loyaltySummary.progressToNext)}%
-                          </Typography>
-                        </Stack>
-                        <LinearProgress variant="determinate" value={loyaltySummary.progressToNext} sx={{ height: 10, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.15)', '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%)' } }} />
-                      </Box>
-                    </Paper>
-
-                    <MetricGrid items={[{ label: 'Completed visits', value: String(customerProfile?.totalVisits ?? 0) }, { label: 'Loyalty points', value: String(customerProfile?.loyaltyPoints ?? 0) }, { label: 'Last vehicle on profile', value: customerProfile?.lastVehicleRegistration ?? session.registrationNumber }, { label: 'Profile tip', value: savingsMessage }]} />
-                    <Button variant="outlined" fullWidth startIcon={<OfferIcon />} onClick={handleRepeatBooking} sx={secondaryActionSx}>
-                      Book this same wash again
-                    </Button>
-                  </Stack>
-                </Paper>
-
-                <Paper sx={panelSx}>
-                  <Stack spacing={2.2}>
-                    <SectionHeading icon={<HistoryIcon sx={{ color: '#a78bfa' }} />} title="Recent wash history" />
-                    {recentSessions.length === 0 ? (
-                      <Alert severity="info" sx={{ borderRadius: 3 }}>
-                        This looks like an early visit on this phone number. Future completed sessions will appear here automatically.
-                      </Alert>
-                    ) : (
-                      <Stack spacing={1.2}>
-                        {recentSessions.map((item) => (
-                          <HistoryCard key={item.sessionId} session={item} />
-                        ))}
-                      </Stack>
-                    )}
-                  </Stack>
-                </Paper>
-
-                <Paper sx={panelSx}>
-                  <Stack spacing={2}>
-                    <SectionHeading icon={<TaskAltIcon sx={{ color: '#fbbf24' }} />} title="Customer guidance" />
-                    <GuidanceRow text="Keep this portal open for live tracking as the vehicle moves across the wash workflow." />
-                    <GuidanceRow text="When the inspection phase starts, this page becomes the handoff point for approval." />
-                    <GuidanceRow text="If payment is still pending after completion, use the portal action here instead of waiting on a separate page." />
-                    <GuidanceRow text="Use the same phone number every time so your wash history and loyalty progress stay connected." />
-                  </Stack>
-                </Paper>
-              </Stack>
-            </Stack>
-          </Stack>
-
-          <AnimatePresence>
-            {signing && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2, 6, 23, 0.96)', zIndex: 9999, display: 'flex', flexDirection: 'column', padding: 20 }}>
-                <Container maxWidth="md" sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                  <Paper sx={{ p: { xs: 2.5, md: 3 }, borderRadius: 4, bgcolor: 'rgba(15,23,42,0.96)', color: 'white', border: '1px solid rgba(148,163,184,0.14)', display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Typography variant="h5" sx={{ fontWeight: 800 }} align="center">
-                      Sign below to approve inspection
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(226,232,240,0.66)', textAlign: 'center', mt: 1 }}>
-                      Confirm the vehicle handoff once the inspection team has finished.
-                    </Typography>
-
-                    <Box sx={{ flex: 1, bgcolor: 'white', borderRadius: 4, my: 3, overflow: 'hidden', minHeight: 280 }}>
-                      <SignaturePad ref={sigPad} canvasProps={{ style: { width: '100%', height: '100%' } }} />
-                    </Box>
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                      <Button fullWidth variant="outlined" color="inherit" onClick={() => sigPad.current?.clear()}>
-                        Clear signature
-                      </Button>
-                      <Button fullWidth variant="outlined" color="inherit" onClick={() => setSigning(false)}>
-                        Cancel
-                      </Button>
-                      <Button fullWidth variant="contained" onClick={handleSign} sx={primaryActionSx}>
-                        Submit approval
-                      </Button>
+                      ))}
                     </Stack>
                   </Paper>
-                </Container>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </Container>
-    </Box>
-  );
-};
+                )}
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button onClick={() => setShowPaymentDialog(false)} sx={{ color: 'text.secondary' }}>
+                Cancel
+              </Button>
+              <Button variant="contained" startIcon={<Payment />} onClick={handlePayment} sx={ctaButtonSx}>
+                Confirm payment
+              </Button>
+            </DialogActions>
+          </Dialog>
 
-function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <Box display="flex" alignItems="center" gap={1.25}>
-      {icon}
-      <Typography variant="h6" sx={{ fontWeight: 800 }}>
-        {title}
-      </Typography>
-    </Box>
-  );
-}
+          <Divider />
 
-function GuidanceRow({ text }: { text: string }) {
-  return (
-    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-      <Box sx={{ mt: 0.15, width: 24, height: 24, borderRadius: 999, bgcolor: 'rgba(251,191,36,0.14)', display: 'grid', placeItems: 'center' }}>
-        <TaskAltIcon sx={{ fontSize: 15, color: '#fbbf24' }} />
-      </Box>
-      <Typography sx={{ color: 'rgba(226,232,240,0.72)' }}>{text}</Typography>
-    </Stack>
-  );
-}
-
-function MetricGrid({ items }: { items: { label: string; value: string }[] }) {
-  return (
-    <Box display="grid" gridTemplateColumns={{ xs: '1fr', sm: 'repeat(2, 1fr)' }} gap={2}>
-      {items.map((item) => (
-        <Paper key={item.label} sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.12)' }}>
-          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.5)' }}>
-            {item.label}
-          </Typography>
-          <Typography variant="h6" sx={{ mt: 0.65, fontWeight: 800, wordBreak: 'break-word' }}>
-            {item.value}
-          </Typography>
-        </Paper>
-      ))}
-    </Box>
-  );
-}
-
-function MessageCard({ title, body, time, tone }: { title: string; body: string; time: string; tone: 'success' | 'warning' | 'info' | 'muted' }) {
-  const toneMap = {
-    success: { bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.22)', badge: '#86efac' },
-    warning: { bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.22)', badge: '#fcd34d' },
-    info: { bg: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.22)', badge: '#67e8f9' },
-    muted: { bg: 'rgba(255,255,255,0.04)', border: 'rgba(148,163,184,0.12)', badge: 'rgba(226,232,240,0.72)' },
-  } as const;
-  const colors = toneMap[tone];
-
-  return (
-    <Paper sx={{ p: 2, borderRadius: 3, bgcolor: colors.bg, border: `1px solid ${colors.border}` }}>
-      <Stack direction="row" justifyContent="space-between" spacing={2} alignItems="flex-start">
-        <Box>
-          <Typography sx={{ fontWeight: 800, color: 'white' }}>{title}</Typography>
-          <Typography sx={{ mt: 0.65, color: 'rgba(226,232,240,0.7)' }}>{body}</Typography>
-        </Box>
-        <Chip label={new Date(time).toLocaleTimeString()} sx={{ color: colors.badge, borderColor: colors.border }} variant="outlined" />
-      </Stack>
-    </Paper>
-  );
-}
-
-function HistoryCard({ session }: { session: NonNullable<VehicleSession['recentSessions']>[number] }) {
-  return (
-    <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.12)' }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5}>
-        <Box>
-          <Typography sx={{ fontWeight: 800 }}>{session.registrationNumber}</Typography>
-          <Typography sx={{ mt: 0.4, color: 'rgba(226,232,240,0.68)' }}>{session.servicePackage}</Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.46)' }}>
-            {new Date(session.completedAt ?? session.createdAt).toLocaleString()}
-          </Typography>
-        </Box>
-        <Stack spacing={1} alignItems={{ xs: 'flex-start', sm: 'flex-end' }}>
-          <Chip label={session.status} sx={historyStatusChipSx(session.status)} />
-          <Typography sx={{ fontWeight: 700 }}>${session.price?.toFixed(2) ?? '0.00'}</Typography>
-          <Typography variant="caption" sx={{ color: session.paid ? '#86efac' : '#fcd34d' }}>
-            {session.paid ? 'Paid' : 'Pending payment'}
+          <Typography sx={{ color: 'text.secondary', textAlign: 'center', pb: 2 }}>
+            Live tracking active for {session.registrationNumber}
           </Typography>
         </Stack>
-      </Stack>
+      </Container>
+
+      <CustomerContactStrip />
+    </Box>
+  );
+};
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <Paper sx={(theme) => ({ p: 1.6, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.08), border: `1px solid ${theme.palette.divider}`, boxShadow: 'none' })}>
+      <Typography sx={{ color: 'text.secondary', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {label}
+      </Typography>
+      <Typography sx={{ mt: 0.6, fontWeight: 700, color: 'text.primary' }}>
+        {value}
+      </Typography>
     </Paper>
   );
 }
 
-const heroPaperSx = {
-  p: { xs: 3, md: 4.5 },
+const heroTagSx = {
+  width: 'fit-content',
+  bgcolor: 'rgba(255,248,241,0.14)',
+  color: '#fff8f1',
+  border: '1px solid rgba(255,248,241,0.22)',
+  fontWeight: 700,
+};
+
+const heroChipSx = {
+  bgcolor: 'rgba(255,248,241,0.1)',
+  color: '#fff8f1',
+  border: '1px solid rgba(255,248,241,0.18)',
+  fontWeight: 600,
+};
+
+const heroButtonSx = {
+  bgcolor: '#e36b2c',
+  color: '#fffaf5',
+  px: 3,
+  py: 1.35,
+  borderRadius: 999,
+  '&:hover': {
+    bgcolor: '#cf5d21',
+  },
+};
+
+const heroGhostButtonSx = {
+  color: '#fff8f1',
+  borderColor: 'rgba(255,248,241,0.26)',
+  px: 3,
+  py: 1.35,
+  borderRadius: 999,
+  '&:hover': {
+    borderColor: 'rgba(255,248,241,0.46)',
+    bgcolor: 'rgba(255,248,241,0.06)',
+  },
+};
+
+const heroSessionCardSx = {
+  p: 3.25,
+  borderRadius: 5,
+  bgcolor: 'rgba(18,13,10,0.88)',
+  border: '1px solid rgba(255,244,233,0.26)',
+  boxShadow: '0 22px 42px rgba(0,0,0,0.18)',
+  color: '#f5ede5',
+};
+
+const pricingCardSx = {
+  p: 3,
   borderRadius: 4,
-  bgcolor: 'rgba(23,29,34,0.98)',
-  border: '1px solid rgba(154,168,176,0.14)',
-  boxShadow: '0 16px 34px rgba(0, 0, 0, 0.2)',
+  height: '100%',
+  bgcolor: 'rgba(255,247,240,0.05)',
 };
 
-const panelSx = {
-  p: { xs: 3, md: 3.5 },
+const sectionCardSx = {
+  p: 3,
   borderRadius: 4,
-  bgcolor: 'rgba(23,29,34,0.98)',
-  border: '1px solid rgba(154,168,176,0.14)',
+  bgcolor: 'rgba(255,247,240,0.05)',
 };
 
-const progressCardSx = {
-  p: 2.25,
-  borderRadius: 3,
-  bgcolor: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(148,163,184,0.12)',
-};
-
-const progressOrbitSx = {
-  position: 'relative',
-  width: 240,
-  height: 240,
+const sectionIconSx = {
+  width: 32,
+  height: 32,
   borderRadius: '50%',
+  bgcolor: 'rgba(227,107,44,0.12)',
   display: 'grid',
   placeItems: 'center',
-  bgcolor: 'rgba(255,255,255,0.03)',
-  border: '1px solid rgba(95,183,212,0.14)',
-  boxShadow: 'inset 0 0 22px rgba(95,183,212,0.05), 0 16px 28px rgba(0,0,0,0.18)',
-  '&::before': {
-    content: '""',
-    position: 'absolute',
-    inset: 18,
-    borderRadius: '50%',
-    border: '1px dashed rgba(95,183,212,0.18)',
-  },
-  '&::after': {
-    content: '""',
-    position: 'absolute',
-    inset: 42,
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(95,183,212,0.12) 0%, rgba(23,29,34,0.12) 52%, transparent 72%)',
-  },
+  flexShrink: 0,
 };
 
-const focusCardSx = {
-  p: 2.4,
+const extraItemSx = {
+  p: 1.8,
   borderRadius: 3,
-  bgcolor: 'rgba(240,180,76,0.08)',
-  border: '1px solid rgba(240,180,76,0.16)',
-};
-
-const loyaltyHeroSx = {
-  p: 2.4,
-  borderRadius: 3,
-  background: 'linear-gradient(135deg, rgba(240,180,76,0.18), rgba(95,183,212,0.12))',
-  border: '1px solid rgba(240,180,76,0.22)',
+  bgcolor: 'rgba(227,107,44,0.06)',
+  border: '1px solid rgba(255,243,232,0.08)',
   boxShadow: 'none',
 };
 
-const portalChipSx = {
-  bgcolor: 'rgba(240,180,76,0.12)',
-  color: '#f0b44c',
-  border: '1px solid rgba(240,180,76,0.22)',
-  fontWeight: 700,
+const signatureCardSx = {
+  p: 3,
+  borderRadius: 4,
+  bgcolor: 'rgba(255,247,240,0.05)',
 };
 
-const featureChipSx = {
-  bgcolor: 'rgba(255,255,255,0.05)',
-  color: 'rgba(238,242,244,0.9)',
-  border: '1px solid rgba(154,168,176,0.14)',
-};
-
-const loyaltyChipSx = {
-  bgcolor: 'rgba(255,255,255,0.08)',
-  color: '#fef3c7',
-  border: '1px solid rgba(253,224,71,0.26)',
-  fontWeight: 700,
-};
-
-const secondaryActionSx = {
-  py: 1.5,
-  borderRadius: 3,
-  color: '#5fb7d4',
-  borderColor: 'rgba(95,183,212,0.42)',
-  fontWeight: 700,
+const ctaButtonSx = {
+  bgcolor: '#e36b2c',
+  color: '#fffaf5',
+  borderRadius: 999,
+  py: 1.35,
   '&:hover': {
-    borderColor: '#5fb7d4',
-    bgcolor: 'rgba(95,183,212,0.06)',
+    bgcolor: '#cf5d21',
   },
 };
 
-const primaryActionSx = {
-  py: 1.7,
-  borderRadius: 3,
-  bgcolor: '#f0b44c',
-  color: '#1b1f22',
-  fontWeight: 800,
-  boxShadow: 'none',
-  '&:hover': { bgcolor: '#f5cb7f' },
+const secondaryButtonSx = {
+  color: '#f5ede5',
+  borderColor: 'rgba(255,243,232,0.14)',
+  borderRadius: 999,
+  py: 1.2,
+  '&:hover': {
+    borderColor: 'rgba(255,243,232,0.24)',
+    bgcolor: 'rgba(255,247,240,0.05)',
+  },
 };
 
-const historyStatusChipSx = (status: SessionStatus) => ({
-  bgcolor: status === 'COMPLETED' ? 'rgba(16,185,129,0.12)' : status === 'INSPECTION' ? 'rgba(245,158,11,0.12)' : 'rgba(56,189,248,0.12)',
-  color: status === 'COMPLETED' ? '#86efac' : status === 'INSPECTION' ? '#fcd34d' : '#67e8f9',
-  border: '1px solid rgba(148,163,184,0.16)',
+const compactCtaButtonSx = {
+  ...ctaButtonSx,
+  py: 1,
+  px: 2,
+  width: 'fit-content',
+};
+
+const paidChipSx = {
+  bgcolor: 'rgba(79,155,136,0.12)',
+  color: '#3f796b',
   fontWeight: 700,
-});
+};
+
+const openChipSx = {
+  bgcolor: 'rgba(227,107,44,0.12)',
+  color: '#9e4c24',
+  fontWeight: 700,
+};
+
+const savedVehicleCardSx = {
+  p: 2,
+  borderRadius: 3.2,
+  bgcolor: 'rgba(255,255,255,0.03)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  boxShadow: 'none',
+  height: '100%',
+};
+
+const historyCardSx = {
+  p: 1.8,
+  borderRadius: 3,
+  bgcolor: 'rgba(255,255,255,0.025)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  boxShadow: 'none',
+};
+
+const historyStatusChipSx = {
+  bgcolor: 'rgba(227,107,44,0.12)',
+  color: '#efb393',
+  fontWeight: 700,
+};
+
+const loyaltyCardSx = {
+  p: 2.2,
+  borderRadius: 3.2,
+  bgcolor: 'rgba(242,178,79,0.05)',
+  border: '1px solid rgba(242,178,79,0.14)',
+  boxShadow: 'none',
+};
+
+const messageThreadSx = {
+  p: 1.6,
+  borderRadius: 3.2,
+  bgcolor: 'rgba(255,255,255,0.025)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  boxShadow: 'none',
+  maxHeight: 340,
+  overflowY: 'auto',
+};
+
+const paymentSummaryCardSx = {
+  p: 2,
+  borderRadius: 3.2,
+  bgcolor: 'rgba(255,255,255,0.03)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  boxShadow: 'none',
+};
 
 export default CustomerPortalPage;

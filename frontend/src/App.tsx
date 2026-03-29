@@ -15,6 +15,7 @@ const SessionsPage = lazy(() => import('./pages/SessionsPage').then((module) => 
 const TabletLanePage = lazy(() => import('./pages/TabletLanePage').then((module) => ({ default: module.TabletLanePage })));
 const CustomerPortalPage = lazy(() => import('./pages/CustomerPortalPage'));
 const CustomerLoginPage = lazy(() => import('./pages/CustomerLoginPage'));
+const CustomerDashboardPage = lazy(() => import('./pages/CustomerDashboardPage'));
 const BookingPage = lazy(() => import('./pages/BookingPage'));
 const BookingConfirmationPage = lazy(() => import('./pages/BookingConfirmationPage'));
 
@@ -41,61 +42,57 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <AppShell>
-          <Suspense fallback={<RouteLoader />}>
-            <Routes>
-              <Route path="/portal/login" element={<CustomerLoginPage />} />
-              <Route path="/portal/book" element={<BookingPage />} />
-              <Route path="/portal/confirmation/:token" element={<BookingConfirmationPage />} />
-              <Route path="/portal/:token" element={<CustomerPortalPage />} />
-              <Route path="/login" element={<LoginPage />} />
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="/portal/login" element={<CustomerLoginPage />} />
+            <Route path="/portal/dashboard" element={<CustomerDashboardPage />} />
+            <Route path="/portal/book" element={<BookingPage />} />
+            <Route path="/portal/confirmation/:token" element={<BookingConfirmationPage />} />
+            <Route path="/portal/:token" element={<CustomerPortalPage />} />
+            <Route path="/login" element={<LoginPage />} />
 
-              {/* Dashboard - all authenticated roles */}
-              <Route path="/" element={
-                <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
-                  <DashboardPage />
-                </RoleGuard>
-              } />
-
-              {/* Sessions - all roles (role-based button visibility handled inside the page) */}
-              <Route path="/sessions" element={
-                <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
-                  <SessionsPage />
-                </RoleGuard>
-              } />
-
-              {/* Search - all roles */}
-              <Route path="/search" element={
-                <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
-                  <SearchPage />
-                </RoleGuard>
-              } />
-
-              {/* Tablet - only ADMIN and LANE_OPERATOR */}
-              <Route path="/tablet" element={
-                <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'LANE_OPERATOR']} redirectTo="/">
-                  <TabletLanePage />
-                </RoleGuard>
-              } />
-
-              {/* Admin - only ADMIN */}
-              <Route path="/admin" element={
-                <RoleGuard allowedRoles={['ADMIN']} redirectTo="/">
-                  <AdminPage />
-                </RoleGuard>
-              } />
-
-              {/* Audit Logs - only ADMIN and AUDITOR */}
-              <Route path="/audit-logs" element={
-                <RoleGuard allowedRoles={['ADMIN', 'AUDITOR']} redirectTo="/">
-                  <AuditLogsPage />
-                </RoleGuard>
-              } />
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </AppShell>
+            <Route
+              path="*"
+              element={(
+                <AppShell>
+                  <Routes>
+                    <Route path="/" element={
+                      <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
+                        <DashboardPage />
+                      </RoleGuard>
+                    } />
+                    <Route path="/sessions" element={
+                      <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
+                        <SessionsPage />
+                      </RoleGuard>
+                    } />
+                    <Route path="/search" element={
+                      <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR']}>
+                        <SearchPage />
+                      </RoleGuard>
+                    } />
+                    <Route path="/tablet" element={
+                      <RoleGuard allowedRoles={['ADMIN', 'BRANCH_MANAGER', 'LANE_OPERATOR']} redirectTo="/">
+                        <TabletLanePage />
+                      </RoleGuard>
+                    } />
+                    <Route path="/admin" element={
+                      <RoleGuard allowedRoles={['ADMIN']} redirectTo="/">
+                        <AdminPage />
+                      </RoleGuard>
+                    } />
+                    <Route path="/audit-logs" element={
+                      <RoleGuard allowedRoles={['ADMIN', 'AUDITOR']} redirectTo="/">
+                        <AuditLogsPage />
+                      </RoleGuard>
+                    } />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </AppShell>
+              )}
+            />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ThemeProvider>
   );

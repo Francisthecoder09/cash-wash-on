@@ -37,6 +37,7 @@ import { branchApi, laneApi, userApi, staffApi, dashboardApi } from '../api/admi
 import { ServicesTab } from './ServicesTab';
 import CustomersTab from './CustomersTab';
 import { PremiumScene } from '../components/layout/PremiumScene';
+import { formatCurrency } from '../utils/currency';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -83,7 +84,7 @@ export function AdminPage() {
     // Form states
     const [branchForm, setBranchForm] = useState<CreateBranchRequest>({ name: '', location: '', timezone: 'Africa/Accra' });
     const [laneForm, setLaneForm] = useState<CreateLaneRequest>({ laneName: '', branchId: 0, displayOrder: 1 });
-    const [userForm, setUserForm] = useState<CreateUserRequest>({ email: '', pin: '', role: 'CASHIER', branchId: 0, staffId: 0 });
+    const [userForm, setUserForm] = useState<CreateUserRequest>({ username: '', password: '', role: 'CASHIER', branchId: 0, staffId: 0 });
     const [staffForm, setStaffForm] = useState<CreateStaffRequest>({ fullName: '', employeeCode: '', phone: '', branchId: 0 });
 
     useEffect(() => {
@@ -132,14 +133,27 @@ export function AdminPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [branchesData, lanesData, usersData] = await Promise.all([
+            const [branchesResult, lanesResult, usersResult] = await Promise.allSettled([
                 branchApi.getAll(),
                 laneApi.getAll(),
                 userApi.getAll()
             ]);
+
+            const branchesData = branchesResult.status === 'fulfilled' ? branchesResult.value : [];
+            const lanesData = lanesResult.status === 'fulfilled' ? lanesResult.value : [];
+            const usersData = usersResult.status === 'fulfilled' ? usersResult.value : [];
+
             setBranches(branchesData);
             setLanes(lanesData);
             setUsers(usersData);
+
+            const failedSections: string[] = [];
+            if (branchesResult.status === 'rejected') failedSections.push('branches');
+            if (lanesResult.status === 'rejected') failedSections.push('lanes');
+            if (usersResult.status === 'rejected') failedSections.push('users');
+            if (failedSections.length > 0) {
+                showSnackbar(`Failed to load ${failedSections.join(', ')}`, 'error');
+            }
 
             // Set default branch IDs if branches exist
             if (branchesData.length > 0) {
@@ -249,7 +263,7 @@ export function AdminPage() {
     // User handlers
     const handleSaveUser = async () => {
         // Validate required fields - ensure staffId is not 0 (not selected)
-        if (!userForm.email || !userForm.pin || !userForm.branchId || !userForm.role || userForm.staffId === 0) {
+        if (!userForm.username || !userForm.password || !userForm.branchId || !userForm.role || userForm.staffId === 0) {
             showSnackbar('Please fill in all required fields (including Staff Member)', 'error');
             return;
         }
@@ -305,7 +319,7 @@ export function AdminPage() {
         const branchList = branches.filter(b => b && b.id);
         const defaultBranchId = branchList.length > 0 ? branchList[0].id : 0;
         console.log('openUserDialog - branches:', branches, 'defaultBranchId:', defaultBranchId);
-        setUserForm({ email: '', pin: '', role: 'CASHIER', branchId: defaultBranchId, staffId: 0 });
+        setUserForm({ username: '', password: '', role: 'CASHIER', branchId: defaultBranchId, staffId: 0 });
         if (defaultBranchId > 0) {
             loadStaff(defaultBranchId);
         } else {
@@ -336,7 +350,7 @@ export function AdminPage() {
         <Box sx={{ width: '100%', p: { xs: 0, md: 1 } }}>
             <Grid2 container spacing={3} sx={{ mb: 3 }}>
                 <Grid2 size={{ xs: 12, xl: 7 }}>
-                    <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', overflow: 'hidden', position: 'relative' }}>
+                    <Paper sx={{ p: { xs: 3, md: 4 }, minHeight: '100%', overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg, rgba(31,24,20,0.97), rgba(24,18,15,0.94))', backdropFilter: 'blur(18px)' }}>
                         <Box sx={{ position: 'relative', zIndex: 1 }}>
                             <Chip label="Administrative Control" sx={{ mb: 2, bgcolor: 'rgba(240,180,76,0.12)', color: '#f5cb7f' }} />
                             <Typography variant="h2" sx={{ mb: 1.5, maxWidth: 760, color: '#eef2f4', lineHeight: 1.02 }}>
@@ -347,7 +361,7 @@ export function AdminPage() {
                             </Typography>
                             <Grid2 container spacing={1.5}>
                                 <Grid2 size={{ xs: 12, sm: 4 }}>
-                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(95,183,212,0.14)' }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(24,18,16,0.94)', border: '1px solid rgba(95,183,212,0.2)' }}>
                                         <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
                                             Branches
                                         </Typography>
@@ -355,7 +369,7 @@ export function AdminPage() {
                                     </Paper>
                                 </Grid2>
                                 <Grid2 size={{ xs: 12, sm: 4 }}>
-                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(102,194,138,0.14)' }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(24,18,16,0.94)', border: '1px solid rgba(102,194,138,0.2)' }}>
                                         <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
                                             Users
                                         </Typography>
@@ -363,7 +377,7 @@ export function AdminPage() {
                                     </Paper>
                                 </Grid2>
                                 <Grid2 size={{ xs: 12, sm: 4 }}>
-                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(19,25,30,0.7)', border: '1px solid rgba(240,180,76,0.14)' }}>
+                                    <Paper sx={{ p: 2.25, bgcolor: 'rgba(24,18,16,0.94)', border: '1px solid rgba(240,180,76,0.2)' }}>
                                         <Typography variant="caption" sx={{ color: 'rgba(154,168,176,0.74)', fontFamily: '"IBM Plex Mono", monospace' }}>
                                             Lanes
                                         </Typography>
@@ -387,7 +401,7 @@ export function AdminPage() {
                 </Grid2>
             </Grid2>
 
-            <Card sx={{ overflow: 'hidden' }}>
+            <Card sx={{ overflow: 'hidden', background: 'linear-gradient(180deg, rgba(31,24,20,0.97), rgba(24,18,15,0.94))', border: '1px solid rgba(255,243,232,0.12)', backdropFilter: 'blur(18px)' }}>
                 <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tab label="Overview" />
                     <Tab label="Branches" />
@@ -404,7 +418,7 @@ export function AdminPage() {
                             {/* Summary Cards */}
                             <Grid2 container spacing={3} sx={{ mb: 4 }}>
                                 <Grid2 size={{ xs: 12, md: 3 }}>
-                                    <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                                    <Card sx={{ background: 'linear-gradient(135deg, rgba(102,126,234,0.85) 0%, rgba(118,75,162,0.78) 100%)', color: 'white', border: '1px solid rgba(255,255,255,0.08)' }}>
                                         <CardContent>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                 <Store sx={{ fontSize: 40 }} />
@@ -417,7 +431,7 @@ export function AdminPage() {
                                     </Card>
                                 </Grid2>
                                 <Grid2 size={{ xs: 12, md: 3 }}>
-                                    <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+                                    <Card sx={{ background: 'linear-gradient(135deg, rgba(240,147,251,0.85) 0%, rgba(245,87,108,0.78) 100%)', color: 'white', border: '1px solid rgba(255,255,255,0.08)' }}>
                                         <CardContent>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                 <DirectionsCar sx={{ fontSize: 40 }} />
@@ -430,7 +444,7 @@ export function AdminPage() {
                                     </Card>
                                 </Grid2>
                                 <Grid2 size={{ xs: 12, md: 3 }}>
-                                    <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+                                    <Card sx={{ background: 'linear-gradient(135deg, rgba(79,172,254,0.85) 0%, rgba(0,242,254,0.78) 100%)', color: 'white', border: '1px solid rgba(255,255,255,0.08)' }}>
                                         <CardContent>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                 <People sx={{ fontSize: 40 }} />
@@ -483,7 +497,7 @@ export function AdminPage() {
                                             <Paper sx={{ p: 3, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                                 <Typography variant="h6" color="textSecondary" gutterBottom>Today's Revenue</Typography>
                                                 <Typography variant="h3" sx={{ color: '#2e7d32', fontWeight: 'bold' }}>
-                                                    ${branchMetrics.todayRevenue.toFixed(2)}
+                                                    {formatCurrency(branchMetrics.todayRevenue)}
                                                 </Typography>
                                             </Paper>
                                         </Grid2>
@@ -725,7 +739,7 @@ export function AdminPage() {
                             <TableHead>
                                 <TableRow>
                                     <TableCell>ID</TableCell>
-                                    <TableCell>Email Address</TableCell>
+                                    <TableCell>Username</TableCell>
                                     <TableCell>Role</TableCell>
                                     <TableCell>Branch</TableCell>
                                     <TableCell>Staff</TableCell>
@@ -737,7 +751,7 @@ export function AdminPage() {
                                 {users.map((user) => (
                                     <TableRow key={user.id}>
                                         <TableCell>{user.id}</TableCell>
-                                        <TableCell>{user.email}</TableCell>
+                                        <TableCell>{user.username}</TableCell>
                                         <TableCell><Chip label={user.role} size="small" /></TableCell>
                                         <TableCell>{branches.find(b => b.id === user.branchId)?.name || 'N/A'}</TableCell>
                                         <TableCell>{user.staffName || 'N/A'}</TableCell>
@@ -863,18 +877,17 @@ export function AdminPage() {
                     </FormControl>
                     <TextField
                         fullWidth
-                        label="Email Address"
-                        value={userForm.email}
-                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                        label="Username"
+                        value={userForm.username}
+                        onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
                         sx={{ mb: 2 }}
                     />
                     <TextField
                         fullWidth
-                        label="Login PIN"
+                        label="Login Password"
                         type="password"
-                        value={userForm.pin}
-                        inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                        onChange={(e) => setUserForm({ ...userForm, pin: e.target.value })}
+                        value={userForm.password}
+                        onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                         sx={{ mb: 2 }}
                     />
                     <FormControl fullWidth>

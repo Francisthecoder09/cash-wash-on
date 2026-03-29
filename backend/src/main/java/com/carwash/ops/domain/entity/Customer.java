@@ -27,6 +27,12 @@ public class Customer extends BaseEntity {
     @Column(length = 100)
     private String email;
 
+    @Column(name = "username", unique = true, length = 60)
+    private String username;
+
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
     @Column(name = "total_visits")
     private Integer totalVisits = 0;
 
@@ -60,6 +66,22 @@ public class Customer extends BaseEntity {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPinHash() {
+        return pinHash;
+    }
+
+    public void setPinHash(String pinHash) {
+        this.pinHash = pinHash;
     }
 
     public Integer getTotalVisits() {
