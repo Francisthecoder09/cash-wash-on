@@ -16,7 +16,7 @@ spring:
     # database-platform auto-detected from MySQL driver — no need to specify
     hibernate:
       ddl-auto: none
-    show-sql: true
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
     open-in-view: false
     properties:
       hibernate:
@@ -60,6 +60,9 @@ app:
     from: ${APP_MAIL_FROM:noreply@carwash.com}
 
 management:
+  health:
+    mail:
+      enabled: ${MANAGEMENT_HEALTH_MAIL_ENABLED:false}
   endpoints:
     web:
       exposure:
