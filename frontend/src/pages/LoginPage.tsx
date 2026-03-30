@@ -13,13 +13,14 @@ import {
   Stack,
   TextField,
   Typography,
+  Divider,
 } from '@mui/material';
 import { FormEvent, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { authStore } from '../store/auth';
 import { AuthResponse } from '../types';
-import { ArrowForward, Lock, Logout, MailOutline, PersonOutline, Visibility, VisibilityOff } from '@mui/icons-material';
+import { ArrowForward, DirectionsCar, Lock, Logout, MailOutline, PersonOutline, Visibility, VisibilityOff } from '@mui/icons-material';
 
 const glassFieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -169,6 +170,61 @@ export function LoginPage() {
             </Typography>
           </Box>
 
+          <Paper
+            sx={{
+              p: 1.5,
+              borderRadius: 4,
+              bgcolor: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+              backdropFilter: 'blur(18px)',
+            }}
+          >
+            <Stack spacing={1.2}>
+              <Typography sx={{ color: '#fffaf6', fontWeight: 800, fontSize: '0.98rem' }}>
+                Are you a customer?
+              </Typography>
+              <Typography sx={{ color: 'rgba(255,245,236,0.72)', fontSize: '0.86rem', lineHeight: 1.55 }}>
+                Customers should not use the staff login below. Open the customer page to sign in, register, book, and track your wash.
+              </Typography>
+              <Button
+                component={RouterLink}
+                to="/portal/login"
+                variant="contained"
+                fullWidth
+                startIcon={<DirectionsCar />}
+                sx={{
+                  borderRadius: 999,
+                  color: '#1d140f',
+                  bgcolor: '#f0b67e',
+                  fontWeight: 900,
+                  py: 1.35,
+                  animation: 'customerPulse 1.5s ease-in-out infinite',
+                  boxShadow: '0 16px 28px rgba(240,182,126,0.2)',
+                  '@keyframes customerPulse': {
+                    '0%': {
+                      transform: 'scale(1)',
+                      boxShadow: '0 0 0 0 rgba(240,182,126,0.22)',
+                    },
+                    '50%': {
+                      transform: 'scale(1.015)',
+                      boxShadow: '0 0 0 10px rgba(240,182,126,0.02)',
+                    },
+                    '100%': {
+                      transform: 'scale(1)',
+                      boxShadow: '0 0 0 0 rgba(240,182,126,0)',
+                    },
+                  },
+                  '&:hover': {
+                    bgcolor: '#f4c594',
+                  },
+                }}
+              >
+                Open customer login
+              </Button>
+            </Stack>
+          </Paper>
+
           {isLoggedIn && (
             <Alert severity="info" sx={{ borderRadius: 2.5 }}>
               Logged in as <strong>{currentAuth?.email}</strong> ({currentAuth?.role})
@@ -183,43 +239,16 @@ export function LoginPage() {
 
           <Box component="form" onSubmit={submit}>
             <Stack spacing={2.5}>
-              <Button
-                component={RouterLink}
-                to="/portal/login"
-                variant="outlined"
-                fullWidth
-                startIcon={<PersonOutline />}
-                sx={{
-                  borderRadius: 999,
-                  color: '#ffffff',
-                  borderColor: 'rgba(255,255,255,0.26)',
-                  bgcolor: 'rgba(255,255,255,0.08)',
-                  fontWeight: 800,
-                  order: -1,
-                  animation: 'customerPulse 1.5s ease-in-out infinite',
-                  boxShadow: '0 0 0 rgba(255,255,255,0)',
-                  '@keyframes customerPulse': {
-                    '0%': {
-                      opacity: 0.88,
-                      boxShadow: '0 0 0 0 rgba(255,255,255,0.2)',
-                    },
-                    '50%': {
-                      opacity: 1,
-                      boxShadow: '0 0 0 8px rgba(255,255,255,0.02)',
-                    },
-                    '100%': {
-                      opacity: 0.88,
-                      boxShadow: '0 0 0 0 rgba(255,255,255,0)',
-                    },
-                  },
-                  '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.38)',
-                    bgcolor: 'rgba(255,255,255,0.12)',
-                  },
-                }}
-              >
-                Customer login
-              </Button>
+              <Stack spacing={0.65}>
+                <Typography sx={{ color: '#fffaf6', fontWeight: 800 }}>
+                  Staff sign in
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,245,236,0.66)', fontSize: '0.84rem' }}>
+                  This form is for staff, managers, inspectors, cashiers, and auditors only.
+                </Typography>
+              </Stack>
+
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
               <TextField
                 fullWidth
