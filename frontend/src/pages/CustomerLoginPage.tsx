@@ -194,11 +194,19 @@ const CustomerLoginPage: React.FC = () => {
           <Stack spacing={5}>
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
               <Stack direction="row" spacing={1.25} alignItems="center">
-                <Box sx={{ width: 42, height: 42, borderRadius: '50%', bgcolor: '#e36b2c', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800 }}>
-                  S
-                </Box>
+                <Box
+                  component="img"
+                  src="/logo-icon.png"
+                  alt="RinseFlow Logo"
+                  sx={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 2.2,
+                    boxShadow: '0 12px 26px rgba(0,0,0,0.24)',
+                  }}
+                />
                 <Box>
-                  <Typography sx={{ color: '#fff8f1', fontWeight: 700, fontSize: '1.1rem' }}>Spark Wash Access</Typography>
+                  <Typography sx={{ color: '#fff8f1', fontWeight: 700, fontSize: '1.1rem' }}>RinseFlow Access</Typography>
                   <Typography sx={{ color: 'rgba(255,244,233,0.7)', fontSize: '0.92rem' }}>Customer sign in and registration</Typography>
                 </Box>
               </Stack>

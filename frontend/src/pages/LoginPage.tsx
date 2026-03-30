@@ -164,6 +164,9 @@ export function LoginPage() {
             <Typography variant="h4" sx={{ color: '#ffffff', fontWeight: 700, textShadow: '0 4px 20px rgba(0,0,0,0.24)' }}>
               Sign in
             </Typography>
+            <Typography sx={{ mt: 0.8, color: 'rgba(255,245,236,0.72)', fontSize: '0.95rem' }}>
+              RinseFlow operations access
+            </Typography>
           </Box>
 
           {isLoggedIn && (
@@ -180,6 +183,44 @@ export function LoginPage() {
 
           <Box component="form" onSubmit={submit}>
             <Stack spacing={2.5}>
+              <Button
+                component={RouterLink}
+                to="/portal/login"
+                variant="outlined"
+                fullWidth
+                startIcon={<PersonOutline />}
+                sx={{
+                  borderRadius: 999,
+                  color: '#ffffff',
+                  borderColor: 'rgba(255,255,255,0.26)',
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  fontWeight: 800,
+                  order: -1,
+                  animation: 'customerPulse 1.5s ease-in-out infinite',
+                  boxShadow: '0 0 0 rgba(255,255,255,0)',
+                  '@keyframes customerPulse': {
+                    '0%': {
+                      opacity: 0.88,
+                      boxShadow: '0 0 0 0 rgba(255,255,255,0.2)',
+                    },
+                    '50%': {
+                      opacity: 1,
+                      boxShadow: '0 0 0 8px rgba(255,255,255,0.02)',
+                    },
+                    '100%': {
+                      opacity: 0.88,
+                      boxShadow: '0 0 0 0 rgba(255,255,255,0)',
+                    },
+                  },
+                  '&:hover': {
+                    borderColor: 'rgba(255,255,255,0.38)',
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                  },
+                }}
+              >
+                Customer login
+              </Button>
+
               <TextField
                 fullWidth
                 name="email"
@@ -276,26 +317,6 @@ export function LoginPage() {
                 </Button>
               )}
 
-              <Button
-                component={RouterLink}
-                to="/portal/login"
-                variant="outlined"
-                fullWidth
-                startIcon={<PersonOutline />}
-                sx={{
-                  borderRadius: 999,
-                  color: '#ffffff',
-                  borderColor: 'rgba(255,255,255,0.18)',
-                  bgcolor: 'rgba(255,255,255,0.03)',
-                  fontWeight: 700,
-                  '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.3)',
-                    bgcolor: 'rgba(255,255,255,0.07)',
-                  },
-                }}
-              >
-                Customer login
-              </Button>
             </Stack>
           </Box>
         </Stack>
