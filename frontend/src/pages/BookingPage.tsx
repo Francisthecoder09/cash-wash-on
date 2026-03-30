@@ -37,6 +37,7 @@ import { formatCurrency } from '../utils/currency';
 import { customerSelectMenuProps } from '../utils/customerUi';
 import { resizeVehicleImage } from '../utils/imageUpload';
 import { API_ORIGIN } from '../utils/constants';
+import { getBookingRecommendations, getRecommendationToneColor } from '../utils/recommendations';
 
 const API_BASE = `${API_ORIGIN}/api/portal/sessions`;
 const heroImage = '/olav-tvedt-6lSBynPRaAQ-unsplash.jpg';
@@ -206,6 +207,25 @@ const BookingPage: React.FC = () => {
   const recommendedAddOnNames = useMemo(
     () => getRecommendedAddOnNames(formData.vehicleType, formData.servicePackage, addOnOptions),
     [addOnOptions, formData.servicePackage, formData.vehicleType],
+  );
+  const bookingRecommendations = useMemo(
+    () =>
+      getBookingRecommendations({
+        branchLabel: selectedBranch?.label,
+        servicePackage: formData.servicePackage,
+        vehicleType: formData.vehicleType,
+        appointmentAt: formData.appointmentAt,
+        recommendedAddOnNames,
+        selectedAddOnServices: formData.addOnServices,
+      }),
+    [
+      formData.addOnServices,
+      formData.appointmentAt,
+      formData.servicePackage,
+      formData.vehicleType,
+      recommendedAddOnNames,
+      selectedBranch?.label,
+    ],
   );
 
   const bookingReady = Boolean(
@@ -393,17 +413,50 @@ const BookingPage: React.FC = () => {
               </Grid2>
 
               <Grid2 size={{ xs: 12, lg: 5 }}>
-                <Paper sx={summaryCardSx}>
-                  <Stack spacing={2}>
-                    <Typography sx={{ fontWeight: 700, fontSize: '1.12rem' }}>Booking summary</Typography>
-                    <SummaryRow label="Branch" value={selectedBranch?.label || 'Choose a branch'} />
-                    <SummaryRow label="Service" value={formData.servicePackage || 'Choose a package'} />
-                    <SummaryRow label="Vehicle" value={formData.vehicleType || 'Choose a size'} />
-                    <SummaryRow label="Arrival" value={formData.appointmentAt ? new Date(formData.appointmentAt).toLocaleString() : 'Choose a slot'} />
-                    <SummaryRow label="Add-ons" value={formData.addOnServices.length ? `${formData.addOnServices.length} selected` : 'None selected'} />
-                    <SummaryRow label="Estimated total" value={formatCurrency(grandTotal)} emphasize />
-                  </Stack>
-                </Paper>
+                <Stack spacing={2}>
+                  <Paper sx={summaryCardSx}>
+                    <Stack spacing={2}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.12rem' }}>Booking summary</Typography>
+                      <SummaryRow label="Branch" value={selectedBranch?.label || 'Choose a branch'} />
+                      <SummaryRow label="Service" value={formData.servicePackage || 'Choose a package'} />
+                      <SummaryRow label="Vehicle" value={formData.vehicleType || 'Choose a size'} />
+                      <SummaryRow label="Arrival" value={formData.appointmentAt ? new Date(formData.appointmentAt).toLocaleString() : 'Choose a slot'} />
+                      <SummaryRow label="Add-ons" value={formData.addOnServices.length ? `${formData.addOnServices.length} selected` : 'None selected'} />
+                      <SummaryRow label="Estimated total" value={formatCurrency(grandTotal)} emphasize />
+                    </Stack>
+                  </Paper>
+                  {!!bookingRecommendations.length && (
+                    <Paper sx={summaryCardSx}>
+                      <Stack spacing={1.4}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <AutoAwesome sx={{ color: '#f3b45c', fontSize: 19 }} />
+                          <Typography sx={{ fontWeight: 700, fontSize: '1.02rem' }}>Booking recommendations</Typography>
+                        </Stack>
+                        {bookingRecommendations.map((item) => {
+                          const tone = getRecommendationToneColor(item.tone);
+                          return (
+                            <Box
+                              key={item.title}
+                              sx={{
+                                p: 1.5,
+                                borderRadius: 3,
+                                border: `1px solid ${tone.border}`,
+                                bgcolor: tone.bg,
+                              }}
+                            >
+                              <Typography sx={{ fontWeight: 700, color: tone.text, mb: 0.5 }}>
+                                {item.title}
+                              </Typography>
+                              <Typography sx={{ color: tone.body, lineHeight: 1.6, fontSize: '0.92rem' }}>
+                                {item.body}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Paper>
+                  )}
+                </Stack>
               </Grid2>
             </Grid2>
           </Stack>

@@ -16,6 +16,7 @@ import { resizeVehicleImage } from '../utils/imageUpload';
 import { WS_URL } from '../utils/constants';
 import { getAdminBranchPreference, saveAdminBranchPreference } from '../utils/adminBranchPreference';
 import { calculateAddOnTotal, getRecommendedAddOnNames } from '../utils/addOns';
+import { getRecommendationToneColor, getSessionRecommendation } from '../utils/recommendations';
 import { Add, DirectionsCar, Person, AccessTime, Wifi, WifiOff, Payments, ContentCopy, ChatBubbleOutline } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
 import { servicesApi, sessionApi } from '../api/admin';
@@ -825,6 +826,32 @@ export function SessionsPage() {
                           <Typography variant="body2" color="text.secondary">
                             Operator: {session.operatorName ?? 'Pending assignment'}
                           </Typography>
+
+                          {(() => {
+                            const recommendation = getSessionRecommendation(session);
+                            const tone = getRecommendationToneColor(recommendation.tone);
+
+                            return (
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: 2.5,
+                                  border: `1px solid ${tone.border}`,
+                                  bgcolor: tone.bg,
+                                }}
+                              >
+                                <Typography sx={{ fontWeight: 700, color: tone.text, mb: 0.45 }}>
+                                  Recommended next step
+                                </Typography>
+                                <Typography sx={{ fontWeight: 700, color: '#eef2f4', mb: 0.45 }}>
+                                  {recommendation.title}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: tone.body, lineHeight: 1.6 }}>
+                                  {recommendation.body}
+                                </Typography>
+                              </Box>
+                            );
+                          })()}
 
                           <Button
                             variant="outlined"

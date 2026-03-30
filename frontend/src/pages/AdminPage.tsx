@@ -38,6 +38,7 @@ import { ServicesTab } from './ServicesTab';
 import CustomersTab from './CustomersTab';
 import { PremiumScene } from '../components/layout/PremiumScene';
 import { formatCurrency } from '../utils/currency';
+import { getAdminRecommendations, getRecommendationToneColor } from '../utils/recommendations';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -86,6 +87,14 @@ export function AdminPage() {
     const [laneForm, setLaneForm] = useState<CreateLaneRequest>({ laneName: '', branchId: 0, displayOrder: 1 });
     const [userForm, setUserForm] = useState<CreateUserRequest>({ username: '', email: '', password: '', role: 'CASHIER', branchId: 0, staffId: 0 });
     const [staffForm, setStaffForm] = useState<CreateStaffRequest>({ fullName: '', employeeCode: '', phone: '', branchId: 0 });
+    const selectedDashboardBranchName = branches.find((branch) => branch.id === selectedDashboardBranch)?.name;
+    const adminRecommendations = dashboard
+        ? getAdminRecommendations({
+            dashboard,
+            selectedBranchName: selectedDashboardBranchName,
+            branchMetrics,
+        })
+        : [];
 
     useEffect(() => {
         loadData();
@@ -470,6 +479,41 @@ export function AdminPage() {
                                     </Card>
                                 </Grid2>
                             </Grid2>
+
+                            {!!adminRecommendations.length && (
+                                <Paper sx={{ p: 3, mb: 4, background: 'rgba(24,18,16,0.72)', border: '1px solid rgba(255,243,232,0.1)', backdropFilter: 'blur(14px)' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                        <Speed sx={{ color: '#f5cb7f' }} />
+                                        <Typography variant="h6">Operational recommendations</Typography>
+                                    </Box>
+                                    <Grid2 container spacing={2}>
+                                        {adminRecommendations.map((item) => {
+                                            const tone = getRecommendationToneColor(item.tone);
+                                            return (
+                                                <Grid2 key={item.title} size={{ xs: 12, md: 4 }}>
+                                                    <Paper
+                                                        sx={{
+                                                            p: 2,
+                                                            height: '100%',
+                                                            borderRadius: 3,
+                                                            border: `1px solid ${tone.border}`,
+                                                            bgcolor: tone.bg,
+                                                            boxShadow: 'none',
+                                                        }}
+                                                    >
+                                                        <Typography sx={{ fontWeight: 700, color: tone.text, mb: 0.8 }}>
+                                                            {item.title}
+                                                        </Typography>
+                                                        <Typography sx={{ color: tone.body, lineHeight: 1.65, fontSize: '0.93rem' }}>
+                                                            {item.body}
+                                                        </Typography>
+                                                    </Paper>
+                                                </Grid2>
+                                            );
+                                        })}
+                                    </Grid2>
+                                </Paper>
+                            )}
 
                             {/* Branch Metrics Selector and Display */}
                             <Grid2 container spacing={3} sx={{ mb: 4 }}>
