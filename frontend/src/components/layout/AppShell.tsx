@@ -2,6 +2,7 @@ import { PropsWithChildren, useEffect, useMemo, useState } from 'react';
 import {
   alpha,
   Avatar,
+  Backdrop,
   Box,
   Chip,
   Divider,
@@ -9,6 +10,8 @@ import {
   Stack,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -62,7 +65,10 @@ export function AppShell({ children }: PropsWithChildren) {
   const auth = authStore.get();
   const location = useLocation();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [expanded, setExpanded] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const time = useLiveClock();
 
   const visibleNav = useMemo(
@@ -70,17 +76,36 @@ export function AppShell({ children }: PropsWithChildren) {
     [auth?.role],
   );
 
-  const sidebarW = expanded ? SIDEBAR_W : RAIL_W;
+  const sidebarW = isMobile ? SIDEBAR_W : expanded ? SIDEBAR_W : RAIL_W;
 
   const logout = () => {
     authStore.clear();
     navigate('/login');
   };
 
+  useEffect(() => {
+    if (isMobile) {
+      setExpanded(true);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
   if (!auth) return <>{children}</>;
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
+      <Backdrop
+        open={isMobile && mobileNavOpen}
+        onClick={() => setMobileNavOpen(false)}
+        sx={{
+          zIndex: 19,
+          bgcolor: 'rgba(4, 7, 10, 0.58)',
+          backdropFilter: 'blur(4px)',
+        }}
+      />
       <Box
         sx={{
           position: 'fixed',
@@ -105,7 +130,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
       <Box
         component={motion.aside}
-        animate={{ width: sidebarW }}
+        animate={isMobile ? undefined : { width: sidebarW }}
         transition={{ type: 'spring', stiffness: 220, damping: 28 }}
         sx={{
           position: 'fixed',
@@ -120,6 +145,9 @@ export function AppShell({ children }: PropsWithChildren) {
           background: 'linear-gradient(180deg, rgba(27,20,17,0.98) 0%, rgba(21,16,13,0.97) 100%)',
           boxShadow: '18px 0 42px rgba(0,0,0,0.28)',
           backdropFilter: 'blur(18px)',
+          width: sidebarW,
+          transform: isMobile ? `translateX(${mobileNavOpen ? '0' : '-100%'})` : 'translateX(0)',
+          transition: isMobile ? 'transform 0.26s ease' : undefined,
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ px: 2, pt: 2, pb: 1.5 }}>
@@ -161,14 +189,20 @@ export function AppShell({ children }: PropsWithChildren) {
             )}
           </AnimatePresence>
           <IconButton
-            onClick={() => setExpanded((prev) => !prev)}
+            onClick={() => {
+              if (isMobile) {
+                setMobileNavOpen(false);
+                return;
+              }
+              setExpanded((prev) => !prev);
+            }}
             sx={{
               color: 'rgba(245,237,229,0.88)',
               bgcolor: 'rgba(255,247,240,0.06)',
               border: '1px solid rgba(255,243,232,0.08)',
             }}
           >
-            {expanded ? <ChevronLeft /> : <Menu />}
+            {isMobile ? <ChevronLeft /> : expanded ? <ChevronLeft /> : <Menu />}
           </IconButton>
         </Stack>
 
@@ -349,7 +383,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
       <Box
         component={motion.main}
-        animate={{ marginLeft: sidebarW }}
+        animate={{ marginLeft: isMobile ? 0 : sidebarW }}
         transition={{ type: 'spring', stiffness: 220, damping: 28 }}
         sx={{ flex: 1, minHeight: '100vh', position: 'relative' }}
       >
@@ -358,8 +392,8 @@ export function AppShell({ children }: PropsWithChildren) {
             position: 'sticky',
             top: 0,
             zIndex: 10,
-            px: { xs: 2.5, md: 4 },
-            pt: 2,
+            px: { xs: 1.5, md: 4 },
+            pt: { xs: 1.25, md: 2 },
           }}
         >
           <Stack
@@ -368,23 +402,37 @@ export function AppShell({ children }: PropsWithChildren) {
             justifyContent="space-between"
             alignItems={{ xs: 'flex-start', md: 'center' }}
             sx={{
-              px: 2,
-              py: 1.5,
+              px: { xs: 1.4, md: 2 },
+              py: { xs: 1.2, md: 1.5 },
               borderRadius: 4,
               border: '1px solid rgba(255,243,232,0.08)',
               background: 'linear-gradient(180deg, rgba(34,26,22,0.96), rgba(26,20,17,0.94))',
               backdropFilter: 'blur(16px)',
             }}
           >
-            <Box>
+            <Stack direction="row" spacing={1.2} alignItems="center">
+              {isMobile && (
+                <IconButton
+                  onClick={() => setMobileNavOpen(true)}
+                  sx={{
+                    color: '#f5ede5',
+                    bgcolor: 'rgba(255,247,240,0.06)',
+                    border: '1px solid rgba(255,243,232,0.08)',
+                  }}
+                >
+                  <Menu />
+                </IconButton>
+              )}
+              <Box>
               <Typography variant="caption" sx={{ color: 'rgba(228,206,190,0.68)' }}>
                 ACTIVE WORKSPACE
               </Typography>
               <Typography variant="h6" sx={{ color: '#f5ede5' }}>
                 {visibleNav.find((item) => item.path === location.pathname)?.label ?? 'Operations'}
               </Typography>
-            </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
               <Chip label="Realtime active" sx={{ bgcolor: 'rgba(79,155,136,0.1)', color: '#3f796b', border: '1px solid rgba(79,155,136,0.16)' }} />
               <Chip label={auth.role.replace('_', ' ')} sx={{ bgcolor: 'rgba(227,107,44,0.1)', color: '#9e4c24', border: '1px solid rgba(227,107,44,0.16)' }} />
             </Stack>
@@ -398,7 +446,7 @@ export function AppShell({ children }: PropsWithChildren) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.3 }}
-            style={{ padding: '26px 28px 44px' }}
+            style={{ padding: isMobile ? '18px 12px 32px' : '26px 28px 44px' }}
           >
             {children}
           </motion.div>

@@ -28,7 +28,9 @@ import {
     Alert,
     Chip,
     SelectChangeEvent,
-    Grid2
+    Grid2,
+    useMediaQuery,
+    useTheme,
 } from '@mui/material';
 import { Add, Delete, Edit, Store, DirectionsCar, People, Speed } from '@mui/icons-material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -50,7 +52,7 @@ function TabPanel(props: TabPanelProps) {
     const { children, value, index, ...other } = props;
     return (
         <div role="tabpanel" hidden={value !== index} {...other}>
-            {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+            {value === index && <Box sx={{ p: { xs: 1.5, md: 3 } }}>{children}</Box>}
         </div>
     );
 }
@@ -58,6 +60,8 @@ function TabPanel(props: TabPanelProps) {
 const ROLES: Role[] = ['ADMIN', 'BRANCH_MANAGER', 'CASHIER', 'LANE_OPERATOR', 'INSPECTOR', 'AUDITOR'];
 
 export function AdminPage() {
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const [tab, setTab] = useState(0);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [lanes, setLanes] = useState<Lane[]>([]);
@@ -355,6 +359,19 @@ export function AdminPage() {
         loadStaff(branchId);
     };
 
+    const adminTableContainerSx = {
+        overflowX: 'auto',
+        '& .MuiTable-root': {
+            minWidth: isMobile ? 720 : '100%',
+        },
+        '& .MuiTableCell-root': {
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
+            verticalAlign: 'top',
+            px: isMobile ? 1.2 : 2,
+        },
+    };
+
     return (
         <Box sx={{ width: '100%', p: { xs: 0, md: 1 } }}>
             <Grid2 container spacing={3} sx={{ mb: 3 }}>
@@ -411,7 +428,14 @@ export function AdminPage() {
             </Grid2>
 
             <Card sx={{ overflow: 'hidden', background: 'linear-gradient(180deg, rgba(31,24,20,0.97), rgba(24,18,15,0.94))', border: '1px solid rgba(255,243,232,0.12)', backdropFilter: 'blur(18px)' }}>
-                <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                <Tabs
+                    value={tab}
+                    onChange={(_, v) => setTab(v)}
+                    variant={isMobile ? 'scrollable' : 'standard'}
+                    scrollButtons={isMobile ? 'auto' : false}
+                    allowScrollButtonsMobile
+                    sx={{ borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minWidth: isMobile ? 120 : 90 } }}
+                >
                     <Tab label="Overview" />
                     <Tab label="Branches" />
                     <Tab label="Lanes" />
@@ -518,9 +542,9 @@ export function AdminPage() {
                             {/* Branch Metrics Selector and Display */}
                             <Grid2 container spacing={3} sx={{ mb: 4 }}>
                                 <Grid2 size={{ xs: 12 }}>
-                                    <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Paper sx={{ p: 3, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: 2, justifyContent: 'space-between' }}>
                                         <Typography variant="h6">Branch Level Analytics</Typography>
-                                        <FormControl sx={{ minWidth: 200 }}>
+                                        <FormControl sx={{ minWidth: 200, width: isMobile ? '100%' : 'auto' }}>
                                             <InputLabel>Select Branch</InputLabel>
                                             <Select
                                                 value={selectedDashboardBranch || ''}
@@ -644,7 +668,7 @@ export function AdminPage() {
                                 <Grid2 size={{ xs: 12 }}>
                                     <Paper sx={{ p: 3 }}>
                                         <Typography variant="h6" sx={{ mb: 2 }}>Branch Performance</Typography>
-                                        <TableContainer>
+                                        <TableContainer sx={adminTableContainerSx}>
                                             <Table>
                                                 <TableHead>
                                                     <TableRow>
@@ -687,12 +711,12 @@ export function AdminPage() {
 
                 {/* Branches Tab */}
                 <TabPanel value={tab} index={1}>
-                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button variant="contained" startIcon={<Add />} onClick={() => openBranchDialog()}>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
+                        <Button variant="contained" startIcon={<Add />} onClick={() => openBranchDialog()} fullWidth={isMobile}>
                             Add Branch
                         </Button>
                     </Box>
-                    <TableContainer component={Paper}>
+                    <TableContainer component={Paper} sx={adminTableContainerSx}>
                         <Table>
                             <TableHead>
                                 <TableRow>
@@ -728,12 +752,12 @@ export function AdminPage() {
 
                 {/* Lanes Tab */}
                 <TabPanel value={tab} index={2}>
-                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button variant="contained" startIcon={<Add />} onClick={() => openLaneDialog()} disabled={branches.length === 0}>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
+                        <Button variant="contained" startIcon={<Add />} onClick={() => openLaneDialog()} disabled={branches.length === 0} fullWidth={isMobile}>
                             Add Lane
                         </Button>
                     </Box>
-                    <TableContainer component={Paper}>
+                    <TableContainer component={Paper} sx={adminTableContainerSx}>
                         <Table>
                             <TableHead>
                                 <TableRow>
@@ -768,17 +792,18 @@ export function AdminPage() {
 
                 {/* Users Tab */}
                 <TabPanel value={tab} index={3}>
-                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
                         <Button
                             variant="contained"
                             startIcon={<Add />}
                             onClick={openUserDialog}
                             disabled={branches.length === 0 || loading}
+                            fullWidth={isMobile}
                         >
                             Add User
                         </Button>
                     </Box>
-                    <TableContainer component={Paper}>
+                    <TableContainer component={Paper} sx={adminTableContainerSx}>
                         <Table>
                             <TableHead>
                                 <TableRow>
