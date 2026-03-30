@@ -29,7 +29,10 @@ public class AppProperties {
     public static class Cors {
         public java.util.List<String> getAllowedOrigins() { return allowedOrigins; }
         public void setAllowedOrigins(java.util.List<String> allowedOrigins) { this.allowedOrigins = allowedOrigins; }
+        public List<String> getAllowedOriginPatterns() { return allowedOriginPatterns; }
+        public void setAllowedOriginPatterns(List<String> allowedOriginPatterns) { this.allowedOriginPatterns = allowedOriginPatterns; }
 
         private java.util.List<String> allowedOrigins = java.util.List.of("http://localhost:5173");
+        private java.util.List<String> allowedOriginPatterns = java.util.List.of("https://*.vercel.app");
     }
 }
